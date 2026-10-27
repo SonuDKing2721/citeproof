@@ -30,7 +30,7 @@ with st.sidebar:
     default_repo = os.getenv("CITEPROOF_REPO", str(PROJECT_DIR / "demo_repos" / "click"))
     repo_path = st.text_input("Local repository folder", value=default_repo, placeholder=r"D:\path\to\repo")
     st.caption(f"Model: `{MODEL_ID}` · provider: NVIDIA API Catalog")
-    st.caption("Maximum 4 model completions per agent. Repository tools are read-only and path-confined.")
+    st.caption("Up to two repository-tool rounds per agent, followed by a required final answer. Repository tools are read-only and path-confined.")
 
 sample_choice = st.selectbox("Demo issue", ["Click #2877 · BytesWarning in Path.convert", "Enter another issue manually"])
 use_sample = sample_choice.startswith("Click #2877")
