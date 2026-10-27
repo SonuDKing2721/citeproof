@@ -18,6 +18,20 @@ def _symbol_exists(source: str, symbol: str) -> bool:
     )
 
 
+def _symbol_contains_lines(source: str, symbol: str, start_line: int, end_line: int) -> bool:
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and node.name == symbol
+        and node.lineno <= start_line
+        and getattr(node, "end_lineno", 0) >= end_line
+        for node in ast.walk(tree)
+    )
+
+
 def check_citation(repo: Repo, citation: Citation) -> Citation:
     try:
         path = repo._confined(citation.path)
@@ -38,9 +52,14 @@ def check_citation(repo: Repo, citation: Citation) -> Citation:
     if citation.quote.strip() not in cited:
         citation.reason = "Quoted text does not occur within the cited line range."
         return citation
-    if citation.symbol and not _symbol_exists("\n".join(lines), citation.symbol):
-        citation.reason = f"Symbol '{citation.symbol}' was not found in this file."
-        return citation
+    if citation.symbol:
+        source = "\n".join(lines)
+        if not _symbol_exists(source, citation.symbol):
+            citation.reason = f"Symbol '{citation.symbol}' was not found in this file."
+            return citation
+        if not _symbol_contains_lines(source, citation.symbol, citation.start_line, citation.end_line):
+            citation.reason = f"Cited lines fall outside symbol '{citation.symbol}'."
+            return citation
     citation.valid = True
     citation.reason = "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct."
     return citation

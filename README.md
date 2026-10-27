@@ -1,6 +1,6 @@
 # Citeproof
 
-Citeproof is a local-first prototype for investigating Python bug reports with source evidence. Two independent Muse Glimmer investigations use bounded, read-only repository tools. A deterministic checker validates cited file, line range, quote, and symbol. Checked citations do not prove that a diagnosis is correct.
+Citeproof is a local-first prototype for investigating Python bug reports with source evidence. Two independent Muse Glimmer investigations use bounded, read-only repository tools. A deterministic checker validates each citation's file, line range, quote, symbol, and whether the cited lines fall within that symbol. The app compares verified citation files and overlapping lines across agents; this is evidence overlap, not proof that either diagnosis is correct.
 
 ## Current inference route and cost boundary
 

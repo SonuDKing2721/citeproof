@@ -6,6 +6,8 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from citeproof.agent import MODEL_ID, investigate
+from citeproof.comparison import compare_evidence
+from citeproof.presentation import citation_quote_details
 from citeproof.repo import Repo, RepoError
 
 load_dotenv()
@@ -58,8 +60,8 @@ if st.button("Investigate with two agents", type="primary", use_container_width=
             issue = f"Title: {issue_title.strip()}\n\n{issue_body.strip()}"
             results = []
             strategies = [
-                ("Investigator A · symptom-first", "Start from the observed behavior and distinctive phrases. Search for likely implementation and tests; follow callers only when evidence points there."),
-                ("Investigator B · structure-first", "Start from likely Python symbols, tests, and call paths. Independently investigate the report; do not assume Investigator A's result."),
+                ("Investigator A · symptom-first", "Start from the observed behavior and exact expression. Search for that expression, then inspect the matching implementation."),
+                ("Investigator B · structure-first", "Start from likely Python symbols and matching tests. Trace the implementation and check that it explains the reported behavior."),
             ]
             for label, strategy in strategies:
                 with st.status(f"Running {label}…", expanded=True) as status:
@@ -91,12 +93,18 @@ if st.button("Investigate with two agents", type="primary", use_container_width=
                             icon = "✅" if citation.valid else "❌"
                             st.markdown(f"{icon} `{citation.path}:{citation.start_line}-{citation.end_line}` · `{citation.symbol or 'no symbol'}`")
                             st.caption(citation.reason)
-                            if citation.valid:
-                                st.code(citation.quote, language="python")
+                            label, quote = citation_quote_details(citation)
+                            st.caption(label)
+                            st.code(quote, language="python")
 
-            if all(not result.error for result in results):
-                st.subheader("Cross-check")
-                st.write("Both investigators completed independently. Review their checked citations side by side; agreement is not a correctness guarantee. Disagreements remain visible rather than being silently resolved.")
+            comparison = compare_evidence(results)
+            st.subheader("Evidence cross-check")
+            st.write(comparison.summary)
+            if comparison.shared_files:
+                st.write("Shared files: " + ", ".join(f"`{path}`" for path in comparison.shared_files))
+            if comparison.overlapping_ranges:
+                ranges = ", ".join(f"`{path}:{start}-{end}`" for path, start, end in comparison.overlapping_ranges)
+                st.write("Overlapping verified ranges: " + ranges)
 
 st.divider()
 st.caption("Citeproof MVP · No generated shell commands or tests are executed.")
