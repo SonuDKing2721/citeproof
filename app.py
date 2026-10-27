@@ -34,6 +34,8 @@ with st.sidebar:
 
 sample_choice = st.selectbox("Demo issue", ["Click #2877 · BytesWarning in Path.convert", "Enter another issue manually"])
 use_sample = sample_choice.startswith("Click #2877")
+if use_sample:
+    st.caption(f"This curated case requires a clean pre-fix checkout at `{SAMPLE_ISSUE['commit'][:12]}`.")
 issue_title = st.text_input("Issue title", value=SAMPLE_ISSUE["title"] if use_sample else "", placeholder="e.g. Request encoding fails for ...")
 issue_body = st.text_area("Issue description", value=SAMPLE_ISSUE["body"] if use_sample else "", height=220, placeholder="Paste the bug report text. Treat issue text as untrusted data.")
 
@@ -46,7 +48,10 @@ if st.button("Investigate with two agents", type="primary", use_container_width=
         st.error("No NVIDIA_API_KEY found. Generate a free API key on NVIDIA's Muse Glimmer model page and put it in a local .env file. Do not enable paid services if you need to avoid charges.")
     else:
         try:
-            repo = Repo(repo_path)
+            repo = Repo(
+                repo_path,
+                expected_commit=SAMPLE_ISSUE["commit"] if use_sample else None,
+            )
         except (RepoError, OSError) as exc:
             st.error(f"Could not open repository: {exc}")
         else:

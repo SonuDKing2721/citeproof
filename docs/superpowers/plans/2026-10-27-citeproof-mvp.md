@@ -1,6 +1,6 @@
 # Citeproof MVP Implementation Plan
 
-**Goal:** Build a local-first Python bug-investigation demo that produces checked source citations and uses Muse Glimmer through Hugging Face's no-card free inference allowance when available.
+**Goal:** Build a local-first Python bug-investigation demo that produces checked source citations and uses Muse Glimmer through NVIDIA's free API Catalog endpoint.
 
 **Architecture:** A Streamlit UI calls a bounded investigation orchestrator. The orchestrator gives the model only allowlisted, read-only repository tools; a deterministic checker validates every citation. The only hosted model route in this slice is NVIDIA's free API Catalog endpoint pinned to Meta Muse Glimmer. No paid route or automatic provider fallback is configured; rate-limit or endpoint failure ends the run clearly.
 

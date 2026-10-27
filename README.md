@@ -25,7 +25,7 @@ streamlit run app.py
 
 In the app, select a local Python repository folder, paste an issue title and description, and click **Investigate with two agents**.
 
-The first curated case is Pallets Click issue [#2877](https://github.com/pallets/click/issues/2877), pinned to pre-fix commit `df2e5ed8c4e89f51ff4eddb9600d913083613e62`. Its separate ground-truth file records the merged fix for evaluation and is not included in the model prompt. The issue report describes a `BytesWarning` when comparing `bytes` and `str` under strict Python warning settings; [PR #3642](https://github.com/pallets/click/pull/3642) is the maintainer-confirmed fix.
+The first curated case is Pallets Click issue [#2877](https://github.com/pallets/click/issues/2877), pinned to pre-fix commit `df2e5ed8c4e89f51ff4eddb9600d913083613e62`. Before the agents run this sample, Citeproof verifies that the selected repository is at that exact Git commit and has a clean working tree; it refuses the sample otherwise. Its separate ground-truth file records the merged fix for evaluation and is not included in the model prompt. The issue report describes a `BytesWarning` when comparing `bytes` and `str` under strict Python warning settings; [PR #3642](https://github.com/pallets/click/pull/3642) is the maintainer-confirmed fix. Manual issue inputs do not use this curated baseline and are not benchmark results.
 
 ## Safety and current limits
 

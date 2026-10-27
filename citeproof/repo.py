@@ -2,6 +2,7 @@
 
 import ast
 import os
+import subprocess
 from pathlib import Path
 
 IGNORED_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".mypy_cache", ".pytest_cache"}
@@ -15,10 +16,36 @@ class RepoError(ValueError):
 
 
 class Repo:
-    def __init__(self, root: str | Path):
+    def __init__(self, root: str | Path, expected_commit: str | None = None):
         self.root = Path(root).expanduser().resolve(strict=True)
         if not self.root.is_dir():
             raise RepoError("Repository path must be a folder.")
+        if expected_commit is not None:
+            self._verify_git_state(expected_commit)
+
+    def _run_git(self, *args: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git", *args],
+                cwd=self.root,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            raise RepoError("Could not verify the curated repository's Git state.") from exc
+        return result.stdout.strip()
+
+    def _verify_git_state(self, expected_commit: str) -> None:
+        head = self._run_git("rev-parse", "HEAD")
+        if head != expected_commit:
+            raise RepoError(
+                f"This curated issue requires the repository at pinned pre-fix commit {expected_commit}; found {head}."
+            )
+        status = self._run_git("status", "--porcelain=v1", "--untracked-files=all")
+        if status:
+            raise RepoError("This curated issue requires a clean working tree so local edits cannot expose the fix.")
 
     def _confined(self, relative_path: str) -> Path:
         candidate = (self.root / relative_path).resolve(strict=True)
