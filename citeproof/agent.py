@@ -110,13 +110,6 @@ def _run_tool(repo: Repo, name: str, raw_args: str) -> str:
                 int(args.get("end_line", 1)),
             )
         return "Tool error: function is not allowlisted."
-    except APITimeoutError:
-        return AgentResult(
-            agent_name,
-            [],
-            trace,
-            "NVIDIA's free endpoint timed out before this agent returned a result. No diagnosis was produced; retry later when the endpoint is responsive.",
-        )
     except Exception as exc:
         return f"Tool error: {type(exc).__name__}: {str(exc)[:300]}"
 

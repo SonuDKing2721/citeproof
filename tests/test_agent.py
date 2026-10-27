@@ -5,7 +5,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from citeproof.agent import investigate
+import httpx
+from openai import APITimeoutError
+
+from citeproof.agent import _run_tool, investigate
 from citeproof.repo import Repo
 
 
@@ -32,6 +35,15 @@ def response(message):
 
 
 class AgentFinalTurnTests(unittest.TestCase):
+    def test_repository_tool_timeout_is_reported_without_masking_error(self):
+        request = httpx.Request("GET", "https://example.com")
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Repo(tmp)
+            with patch.object(repo, "search_text", side_effect=APITimeoutError(request)):
+                result = _run_tool(repo, "search_text", '{"query":"needle"}')
+
+        self.assertEqual(result, "Tool error: APITimeoutError: Request timed out.")
+
     def test_reserves_last_completion_for_final_answer(self):
         requests = []
 
