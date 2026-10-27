@@ -7,28 +7,49 @@ from .models import AgentResult, Citation
 from .repo import Repo, RepoError
 
 
-def _symbol_exists(source: str, symbol: str) -> bool:
+def _symbol_nodes(source: str, symbol: str) -> list[ast.AST]:
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return False
-    return any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == symbol
-        for node in ast.walk(tree)
-    )
+        return []
+    parts = symbol.split(".")
+    if not parts or any(not part for part in parts):
+        return []
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    matching: list[ast.AST] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) or node.name != parts[-1]:
+            continue
+        qualifiers = parts[:-1]
+        if qualifiers:
+            ancestors = []
+            parent = parents.get(node)
+            while parent is not None:
+                if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    ancestors.append(parent.name)
+                parent = parents.get(parent)
+            ancestors.reverse()
+            if ancestors:
+                depth = min(len(qualifiers), len(ancestors))
+                if qualifiers[-depth:] != ancestors[-depth:]:
+                    continue
+        matching.append(node)
+    return matching
+
+
+def _symbol_exists(source: str, symbol: str) -> bool:
+    return bool(_symbol_nodes(source, symbol))
 
 
 def _symbol_contains_lines(source: str, symbol: str, start_line: int, end_line: int) -> bool:
-    try:
-        tree = ast.parse(source)
-    except SyntaxError:
-        return False
     return any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        and node.name == symbol
-        and node.lineno <= start_line
+        node.lineno <= start_line
         and getattr(node, "end_lineno", 0) >= end_line
-        for node in ast.walk(tree)
+        for node in _symbol_nodes(source, symbol)
     )
 
 

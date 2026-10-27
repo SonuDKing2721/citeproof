@@ -54,16 +54,19 @@ class AgentFinalTurnTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, {"NVIDIA_API_KEY": "test-key"}):
             Path(tmp, "sample.py").write_text("needle = True\n", encoding="utf-8")
             with patch("citeproof.agent.OpenAI", return_value=fake_client):
-                result = investigate(Repo(tmp), "sample issue", "Agent", "test strategy")
+                result = investigate(Repo(tmp), "sample issue", "Agent", "test strategy", first_tool="search_text")
 
         self.assertIsNone(result.error)
         self.assertEqual(result.findings, [])
         self.assertEqual(len(requests), 3)
         self.assertEqual(sum("tools" in request for request in requests), 2)
+        self.assertEqual(requests[0]["tool_choice"], {"type": "function", "function": {"name": "search_text"}})
+        self.assertEqual([tool["function"]["name"] for tool in requests[0]["tools"]], ["search_text"])
         self.assertNotIn("tools", requests[-1])
         self.assertIn("at most two tool rounds", requests[0]["messages"][0]["content"].lower())
         self.assertIn("exact expression", requests[0]["messages"][0]["content"].lower())
         self.assertIn("line numbers are hints", requests[0]["messages"][0]["content"].lower())
+        self.assertIn("qualified method names", requests[0]["messages"][0]["content"].lower())
 
 
 if __name__ == "__main__":

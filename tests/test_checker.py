@@ -51,6 +51,19 @@ def unrelated():
 
         self.assertTrue(checked.valid)
 
+    def test_accepts_qualified_class_method_symbol(self):
+        citation = Citation(
+            path="sample.py",
+            symbol="Target.relevant",
+            start_line=3,
+            end_line=3,
+            quote="        return 'expected'",
+        )
+
+        checked = check_citation(self.repo, citation)
+
+        self.assertTrue(checked.valid)
+
 
 if __name__ == "__main__":
     unittest.main()

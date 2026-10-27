@@ -60,12 +60,12 @@ if st.button("Investigate with two agents", type="primary", use_container_width=
             issue = f"Title: {issue_title.strip()}\n\n{issue_body.strip()}"
             results = []
             strategies = [
-                ("Investigator A · symptom-first", "Start from the observed behavior and exact expression. Search for that expression, then inspect the matching implementation."),
-                ("Investigator B · structure-first", "Start from likely Python symbols and matching tests. Trace the implementation and check that it explains the reported behavior."),
+                ("Investigator A · symptom-first", "Start from the observed behavior and exact expression. Search for that expression, then inspect the matching implementation.", "search_text"),
+                ("Investigator B · structure-first", "Start from likely Python symbols and matching tests. Use qualified names and full method spans to trace the implementation and check that it explains the reported behavior.", "find_symbols"),
             ]
-            for label, strategy in strategies:
+            for label, strategy, first_tool in strategies:
                 with st.status(f"Running {label}…", expanded=True) as status:
-                    result = investigate(repo, issue, label, strategy)
+                    result = investigate(repo, issue, label, strategy, first_tool=first_tool)
                     results.append(result)
                     if result.error:
                         status.update(label=f"{label}: incomplete", state="error")

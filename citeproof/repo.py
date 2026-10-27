@@ -115,9 +115,24 @@ class Repo:
             except (OSError, SyntaxError, ValueError):
                 continue
             rel = path.relative_to(self.root).as_posix()
+            parents = {
+                child: parent
+                for parent in ast.walk(tree)
+                for child in ast.iter_child_nodes(parent)
+            }
             for node in ast.walk(tree):
-                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and query in node.name.casefold():
-                    hits.append(f"{rel}:{node.lineno}: {type(node).__name__} {node.name}")
+                if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    continue
+                qualified_parts = []
+                current = node
+                while current is not None:
+                    if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                        qualified_parts.append(current.name)
+                    current = parents.get(current)
+                qualified_name = ".".join(reversed(qualified_parts))
+                if query in qualified_name.casefold():
+                    end_line = getattr(node, "end_lineno", node.lineno)
+                    hits.append(f"{rel}:{node.lineno}-{end_line}: {type(node).__name__} {qualified_name}")
                     if len(hits) >= MAX_MATCHES:
                         return "\n".join(hits)
         return "\n".join(hits) if hits else "No matching Python symbols found."
