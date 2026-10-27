@@ -1,0 +1,8 @@
+{
+  "issue_id": "pallets/click#2877",
+  "issue_url": "https://github.com/pallets/click/issues/2877",
+  "title": "[Python forward compat] click.types.Path.covert: BytesWarning: Comparison between bytes and string",
+  "repo": "pallets/click",
+  "commit": "df2e5ed8c4e89f51ff4eddb9600d913083613e62",
+  "body": "So I've hit this through pip-tools' pip-compile executable some time ago but forgot to report immediately.\nI tend to run Python with strictness like `python -I -s -E -bb -Werror -m piptools compile --some --args`. And that's how I've found this warning. I imagine, it's easy to address by changing the check here: https://github.com/pallets/click/blob/c9f7d9d/src/click/types.py#L929C64-L929C75. Perhaps, by converting the data type.\nHere's a minimal repro. It needs a modern enough Python for `-bb` IIRC.\n\n$ python -Im pip install Click\n$ python -bb -Werror\nPython 3.12.9\n>>> from click.types import Path\n>>> Path(allow_dash=True).convert('', '', '')\nTraceback (most recent call last):\n  File \"/path/to/venv/lib/python3.12/site-packages/click/types.py\", line 865, in convert\n    is_dash = self.file_okay and self.allow_dash and rv in (b\"-\", \"-\")\nBytesWarning: Comparison between bytes and string\n\nEnvironment: Python 3.12.9, Click 8.1.8"
+}

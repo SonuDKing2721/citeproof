@@ -1,0 +1,13 @@
+{
+  "issue_id": "pallets/click#2877",
+  "repo": "pallets/click",
+  "pre_fix_commit": "df2e5ed8c4e89f51ff4eddb9600d913083613e62",
+  "fix_commit": "6f85d26",
+  "merged_pr": 3642,
+  "fix_url": "https://github.com/pallets/click/pull/3642",
+  "diagnosis": "Path.convert compares rv against both bytes and str dash sentinels in a tuple, which emits BytesWarning under python -bb and becomes an error with -Werror. The fix constructs a sentinel with the same type as rv and compares only against that value.",
+  "primary_files": ["src/click/types.py"],
+  "supporting_files": ["tests/test_types.py"],
+  "changed_files": ["src/click/types.py", "tests/test_types.py"],
+  "label_note": "Human-curated from the issue, fix commit, and merged PR. Changed-file labels are proxies; diagnosis must be scored separately. Never pass this file to the agents."
+}
