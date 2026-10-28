@@ -18,6 +18,17 @@ Make Citeproof's UI, JSON reports, benchmark results, and project documentation 
 
 ## Design
 
+### 0. Map the work to judging and award eligibility
+
+- **Stage 1:** show a clear fit with the software frontier theme and demonstrate a real Meta model contribution. Citeproof's use of Muse Glimmer is promising, but the competition's acceptance of the NVIDIA-hosted route for the open-weight bonus is not verified; keep this as an eligibility gate, not a marketing claim.
+- **Impact:** demonstrate the maintainer workflow on real public issues and report per-case localization plus human diagnosis review. Add a small user validation or maintainer feedback if the user can obtain it; do not invent adoption or time-saved claims.
+- **Use of Meta AI tooling:** make the actual Muse model, provider, tools, agent trace, and what each call contributed visible in the demo and run report. Avoid presenting the model name alone as proof of creative use.
+- **Technical depth and execution:** highlight pinned pre-fix repositories, independent search strategies, read-only allowlisted tools, deterministic citation checking, and the budget-matched control; demonstrate that failures remain visible.
+- **Demo:** prepare a reliable live path and an explicitly labeled cached fallback, with a short video that shows one useful discovery, one uncertainty/rejected citation, and measured runtime.
+- **Bonus focus:** prioritize the agentic-use case and open-weight awards already selected by the user. Citeproof does not currently use Muse Image or Muse Wonder, so it should not claim the creative-build bonus without a deliberate, eligible creative feature and enough time to validate it.
+
+The Meta event page describes Indie judging around creativity, technical ambition, and working behavior; the user-provided judging screenshot gives the four equally weighted Stage 2 categories. The currently published Cerebral event page lists Baseten, Modal, and Fireworks as inference partners for Meta open-weight models, but does not establish that NVIDIA is eligible for the open-weight bonus. Until an organizer confirms the route, distinguish Stage 1 model use from bonus eligibility and show the exact inference provider in the submission.
+
 ### 1. Keep one explicit result contract
 
 Add a versioned result summary built once from the investigator results, verified citations, optional verifier review, localization metrics, and run provenance. The UI and exported JSON should consume the same summary rather than independently deriving labels.
@@ -73,6 +84,8 @@ Represent these dimensions separately:
 
 ## Research references
 
+- [Meta Global AI Developer Hackathon page](https://dev.meta.ai/events/global-hackathon) — themes, tracks, and public schedule.
+- [Cerebral Valley event page](https://events.cerebralvalley.ai/e/meta-ai-developer-hackathon) — announced inference partners and event details; exact bonus eligibility still requires the published rules or organizer confirmation.
 - [NVIDIA Muse Glimmer chat-completions API reference](https://docs.api.nvidia.com/nim/reference/meta-muse-glimmer-30b-infer) — endpoint parameters, reasoning effort, token-budget behavior, and best-effort seed behavior.
 - [NVIDIA Muse Glimmer model overview](https://docs.api.nvidia.com/nim/reference/meta-muse-glimmer-30b) — model-level capabilities and application-specific evaluation caveat; do not substitute its model-level sampling guidance for the endpoint reference.
 - [SWE-bench paper](https://arxiv.org/abs/2310.06770) — real issues and repository context motivate issue-level evaluation.
