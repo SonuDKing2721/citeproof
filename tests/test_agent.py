@@ -37,6 +37,10 @@ def response(message):
 
 
 class AgentFinalTurnTests(unittest.TestCase):
+    def test_response_contract_orders_findings_by_plausible_file_location(self):
+        self.assertIn("most to least plausible file location", agent_module.SYSTEM.lower())
+        self.assertIn("this order is a localization ranking", agent_module.SYSTEM.lower())
+
     def test_forced_first_tool_query_overrides_model_selected_query(self):
         seen_queries = []
 

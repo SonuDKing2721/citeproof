@@ -44,6 +44,31 @@ class AppUITests(unittest.TestCase):
         self.assertIn("rejected source quote", code_values)
         self.assertTrue(any("does not show the diagnosis is false" in value.lower() for value in captions))
 
+    def test_per_investigator_file_localization_rows_are_separate_from_pair_scores(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        app.session_state["last_run"] = make_run_snapshot(
+            [
+                AgentResult("Investigator A", [Finding("First", "", [
+                    Citation("src/noise.py", "", 1, 1, "x", valid=True, outcome="verified_exact"),
+                    Citation("src/main.py", "", 1, 1, "y", valid=True, outcome="verified_exact"),
+                ])], []),
+                AgentResult("Investigator B", [Finding("First", "", [
+                    Citation("src/main.py", "", 1, 1, "x", valid=True, outcome="verified_exact"),
+                ])], []),
+            ],
+            "abc123",
+            "Bug report",
+            {"issue_id": "org/repo#1", "primary_files": ["src/main.py"], "supporting_files": []},
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertIn("Per-investigator file-localization proxies", [item.value for item in app.subheader])
+        captions = [item.value for item in app.caption]
+        self.assertTrue(any("Investigator A" in value and "Primary-file reciprocal rank" in value for value in captions))
+        self.assertTrue(any("Investigator B" in value and "1.00" in value for value in captions))
+
     def test_investigation_sections_use_second_level_headings(self):
         app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
         self.assertFalse(app.exception)

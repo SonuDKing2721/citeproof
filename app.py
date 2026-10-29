@@ -278,6 +278,30 @@ def render_run(run: dict) -> None:
                 st.caption(gold_case["evaluation_note"])
         else:
             st.warning("This run is incomplete, so no localization score is reported.")
+        st.subheader("Per-investigator file-localization proxies")
+        for investigator_metrics in report["investigator_localization"]:
+            ranked = ", ".join(investigator_metrics["ranked_files"]) or "No verified files ranked"
+            st.caption(f"{investigator_metrics['name']} · ranked unique checked files: {ranked}")
+
+            def score_label(value: object, *, percent: bool = False, reciprocal: bool = False) -> str:
+                if value is None:
+                    return "Not scored"
+                if isinstance(value, bool):
+                    return "HIT" if value else "MISS"
+                if reciprocal:
+                    return f"{value:.2f}"
+                if percent:
+                    return f"{value:.0%}"
+                return str(value)
+
+            st.caption(
+                f"{investigator_metrics['name']} · Primary-file hit@1: "
+                f"{score_label(investigator_metrics['primary_hit_at_1'])} · "
+                f"Primary-file reciprocal rank: "
+                f"{score_label(investigator_metrics['primary_file_reciprocal_rank'], reciprocal=True)} · "
+                f"Gold-file recall@3: {score_label(investigator_metrics['gold_file_recall_at_3'], percent=True)}"
+            )
+        st.caption("Finding order defines each investigator's file rank. These are file-localization proxies, not diagnosis scores.")
         if run.get("source") == "saved":
             report["run_source"] = (
                 "cached_agent_pair_live_review_rechecked"

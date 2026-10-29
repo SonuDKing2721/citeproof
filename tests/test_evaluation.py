@@ -5,7 +5,12 @@ import unittest
 from citeproof import evaluation
 from citeproof import agent as agent_module
 from citeproof import verifier as verifier_module
-from citeproof.evaluation import build_run_report, export_run_report, score_localization
+from citeproof.evaluation import (
+    build_run_report,
+    export_run_report,
+    score_investigator_localization,
+    score_localization,
+)
 from citeproof.models import AgentResult, Citation, Finding, VerificationReview
 
 
@@ -255,6 +260,91 @@ class RunReportV2Tests(unittest.TestCase):
 
 
 class LocalizationEvaluationTests(unittest.TestCase):
+    def test_investigators_are_scored_by_their_own_finding_order(self):
+        gold = {"primary_files": ["src/main.py"], "supporting_files": ["tests/test_main.py"]}
+        investigator_a = result("A", ["src/noise.py", "tests/test_main.py", "src/main.py"])
+        investigator_b = result("B", ["src/main.py", "tests/test_main.py", "src/noise.py"])
+
+        score_a = score_investigator_localization(investigator_a, gold)
+        score_b = score_investigator_localization(investigator_b, gold)
+
+        self.assertEqual(score_a.ranked_files, ("src/noise.py", "tests/test_main.py", "src/main.py"))
+        self.assertFalse(score_a.primary_hit_at_1)
+        self.assertAlmostEqual(score_a.primary_file_reciprocal_rank, 1 / 3)
+        self.assertEqual(score_a.gold_file_recall_at_3, 1.0)
+        self.assertEqual(score_b.ranked_files, ("src/main.py", "tests/test_main.py", "src/noise.py"))
+        self.assertTrue(score_b.primary_hit_at_1)
+        self.assertEqual(score_b.primary_file_reciprocal_rank, 1.0)
+        self.assertEqual(score_b.gold_file_recall_at_3, 1.0)
+
+    def test_investigator_ranking_deduplicates_files_and_omits_rejected_citations(self):
+        ranked = AgentResult("A", [
+            Finding("first", "", [
+                Citation("src/a.py", "", 1, 1, "x", valid=True, outcome="verified_exact"),
+                Citation("src/a.py", "", 2, 2, "y", valid=True, outcome="verified_exact"),
+                Citation("src/rejected.py", "", 3, 3, "z", valid=False, outcome="quote_not_found"),
+            ]),
+            Finding("second", "", [
+                Citation("src/b.py", "", 1, 1, "b", valid=True, outcome="corrected_unique_exact_quote"),
+                Citation("src/a.py", "", 3, 3, "a", valid=True, outcome="verified_exact"),
+            ]),
+        ], [])
+
+        metrics = score_investigator_localization(
+            ranked,
+            {"primary_files": ["src/b.py"], "supporting_files": ["src/a.py"]},
+        )
+
+        self.assertEqual(metrics.ranked_files, ("src/a.py", "src/b.py"))
+        self.assertNotIn("src/rejected.py", metrics.ranked_files)
+        self.assertFalse(metrics.primary_hit_at_1)
+        self.assertEqual(metrics.primary_file_reciprocal_rank, 0.5)
+
+    def test_incomplete_and_unlabeled_investigator_metrics_are_null(self):
+        incomplete = score_investigator_localization(
+            result("A", ["src/main.py"], error="timeout"),
+            {"primary_files": ["src/main.py"]},
+        )
+        missing_labels = score_investigator_localization(result("A", ["src/main.py"]), {})
+
+        self.assertEqual(incomplete.status, "incomplete")
+        self.assertIsNone(incomplete.primary_hit_at_1)
+        self.assertIsNone(incomplete.primary_file_reciprocal_rank)
+        self.assertIsNone(incomplete.gold_file_recall_at_3)
+        self.assertEqual(missing_labels.status, "missing_gold_labels")
+        self.assertIsNone(missing_labels.primary_hit_at_1)
+        self.assertIsNone(missing_labels.primary_file_reciprocal_rank)
+        self.assertIsNone(missing_labels.gold_file_recall_at_3)
+
+    def test_complete_empty_investigator_gets_zero_scores_with_labels(self):
+        metrics = score_investigator_localization(
+            result("A"),
+            {"primary_files": ["src/main.py"], "supporting_files": ["tests/test_main.py"]},
+        )
+
+        self.assertEqual(metrics.status, "complete")
+        self.assertEqual(metrics.ranked_files, ())
+        self.assertFalse(metrics.primary_hit_at_1)
+        self.assertEqual(metrics.primary_file_reciprocal_rank, 0)
+        self.assertEqual(metrics.gold_file_recall_at_3, 0.0)
+
+    def test_run_report_exports_each_investigator_localization_separately(self):
+        gold = {"issue_id": "org/repo#10", "primary_files": ["src/main.py"], "supporting_files": []}
+        report = build_run_report(
+            gold,
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [result("A", ["src/noise.py", "src/main.py"]), result("B", ["src/main.py"])],
+        )
+
+        rows = report["investigator_localization"]
+        self.assertEqual([row["name"] for row in rows], ["A", "B"])
+        self.assertEqual(rows[0]["ranked_files"], ["src/noise.py", "src/main.py"])
+        self.assertEqual(rows[0]["primary_file_reciprocal_rank"], 0.5)
+        self.assertTrue(rows[1]["primary_hit_at_1"])
+        self.assertIn("file-localization proxy", report["metric_note"].lower())
+
     def test_scores_primary_file_at_one_and_recall_over_primary_and_supporting(self):
         metrics = score_localization(
             [

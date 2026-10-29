@@ -27,6 +27,66 @@ class LocalizationMetrics:
     gold_file_recall_at_3: float | None
 
 
+@dataclass(frozen=True)
+class InvestigatorLocalizationMetrics:
+    agent_name: str
+    status: str
+    ranked_files: tuple[str, ...]
+    primary_hit_at_1: bool | None
+    primary_file_reciprocal_rank: float | None
+    gold_file_recall_at_3: float | None
+
+
+def score_investigator_localization(
+    result: AgentResult,
+    gold_case: dict[str, Any],
+) -> InvestigatorLocalizationMetrics:
+    """Score one investigator's ordered, unique files with checked citations."""
+    if result.error:
+        return InvestigatorLocalizationMetrics(result.agent_name, "incomplete", (), None, None, None)
+
+    ranked_files: list[str] = []
+    seen_files: set[str] = set()
+    for finding in result.findings:
+        for citation in finding.citations:
+            if (
+                citation.valid
+                and citation.outcome in {"verified_exact", "corrected_unique_exact_quote"}
+                and isinstance(citation.path, str)
+                and citation.path
+                and citation.path not in seen_files
+            ):
+                seen_files.add(citation.path)
+                ranked_files.append(citation.path)
+
+    def label_paths(name: str) -> set[str]:
+        value = gold_case.get(name, [])
+        if not isinstance(value, (list, tuple, set)):
+            return set()
+        return {path for path in value if isinstance(path, str) and path}
+
+    primary_files = label_paths("primary_files")
+    gold_files = primary_files | label_paths("supporting_files")
+    if not primary_files or not gold_files:
+        return InvestigatorLocalizationMetrics(
+            result.agent_name, "missing_gold_labels", tuple(ranked_files), None, None, None
+        )
+
+    primary_rank = next(
+        (rank for rank, path in enumerate(ranked_files, start=1) if path in primary_files),
+        None,
+    )
+    top_three = set(ranked_files[:3])
+    return InvestigatorLocalizationMetrics(
+        agent_name=result.agent_name,
+        status="complete",
+        ranked_files=tuple(ranked_files),
+        primary_hit_at_1=bool(ranked_files and ranked_files[0] in primary_files),
+        primary_file_reciprocal_rank=(1 / primary_rank if primary_rank else 0),
+        gold_file_recall_at_3=len(top_three & gold_files) / len(gold_files),
+    )
+
+
 def score_localization(
     results: list[AgentResult],
     gold_case: dict[str, Any],
@@ -318,6 +378,20 @@ def build_run_report(
             "primary_hit_at_1": metrics.primary_hit_at_1,
             "gold_file_recall_at_3": metrics.gold_file_recall_at_3,
         },
+        "investigator_localization": [
+            {
+                "name": investigator.agent_name,
+                "status": investigator.status,
+                "ranked_files": list(investigator.ranked_files),
+                "primary_hit_at_1": investigator.primary_hit_at_1,
+                "primary_file_reciprocal_rank": investigator.primary_file_reciprocal_rank,
+                "gold_file_recall_at_3": investigator.gold_file_recall_at_3,
+            }
+            for investigator in (
+                score_investigator_localization(result, gold_case)
+                for result in results
+            )
+        ],
         "finding_summary": _finding_summary(results, minimum_agents),
         "evidence": {
             "agents_with_verified_citations": agents_with_verified_citations,
@@ -330,7 +404,8 @@ def build_run_report(
         "verification": verification_report_payload(verification),
         "evaluation_note": gold_case.get("evaluation_note", ""),
         "metric_note": (
-            "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness."
+            "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. "
+            "These metrics do not score diagnosis correctness."
         ),
         "agents": [
             {
@@ -484,6 +559,7 @@ def build_comparison_report(
             "model_settings": pair_report["model_settings"],
             "verification": verification_report_payload(effective_verification),
             "agents": pair_report["agents"],
+            "investigator_localization": pair_report["investigator_localization"],
         },
         "baseline": {
             "model_requests": comparison.baseline_model_requests,
@@ -493,11 +569,13 @@ def build_comparison_report(
             "states": baseline_report["states"],
             "model_settings": baseline_report["model_settings"],
             "agents": baseline_report["agents"],
+            "investigator_localization": baseline_report["investigator_localization"],
         },
         "diagnosis_review": {"status": "not_reviewed", "reviewer": None, "note": ""},
         "diagnosis_correctness_metric": "not_scored",
         "metric_note": (
-            "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness. "
+            "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. "
+            "These metrics do not score diagnosis correctness. "
             "Equal request counts do not imply equal token use or equal reasoning quality."
         ),
     }
