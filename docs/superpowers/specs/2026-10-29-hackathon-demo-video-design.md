@@ -13,7 +13,7 @@ Prepare a clear, honest, reproducible three-minute Citeproof demo for the Meta G
 - Use the actual Citeproof interface, not a slide-only explainer.
 - Use timed captions plus a separate voiceover script; do not synthesize a voice.
 - Keep the deliverable local for the participant to review and upload themselves.
-- The participant said the goal is to win. No caption-layout click was recorded, so select the recommended lower-third treatment to preserve the evidence view.
+- The participant selected the recommended lower-third treatment in the visual companion, after comparing it with a side narration panel. It preserves the evidence view and avoids narrowing the source citations.
 
 ## Story and factual claims
 
