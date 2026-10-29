@@ -152,6 +152,8 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
         self.assertEqual(report["baseline"]["cross_check"], "not_applicable")
         self.assertEqual(report["pair"]["states"]["verification"], "skipped")
         self.assertEqual(report["baseline"]["states"]["cross_check"], "not_applicable")
+        self.assertEqual(report["pair"]["finding_summary"]["status"], "no_findings")
+        self.assertEqual(report["baseline"]["finding_summary"]["status"], "no_findings")
         self.assertIn("total_seconds", report["timings"])
         self.assertNotIn("primary_files", payload)
         self.assertNotIn("supporting_files", payload)

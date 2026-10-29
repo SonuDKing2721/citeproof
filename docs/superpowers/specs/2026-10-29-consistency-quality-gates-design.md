@@ -10,8 +10,11 @@ Make Citeproof's UI, JSON reports, benchmark results, and project documentation 
 
 ## Current findings
 
-- The final full suite passed 115 tests. `compileall`, `git diff --check` (with expected LF/CRLF notices), and the local Streamlit HTTP health check passed.
+- The final full suite passed 120 tests. `compileall` and `git diff --check` passed (Git emitted only expected LF/CRLF conversion notices).
 - A saved live end-to-end Click #3449 run completed in 79.7 seconds with 9 investigator requests and 1 verifier request. The investigators had checked overlapping evidence. The primary file ranked second (`hit@1=false`; `recall@3=0.2`), so it is not an unqualified localization success. Diagnosis correctness is unscored.
+- The latest reserved-correction Click comparison completed in 133.109 seconds with 10 requests per path, but pair and baseline returned zero findings and each scored recall@3 `0.0`. A new `finding_summary` labels this as `no_findings` without changing completed investigation or miss scoring; the UI calls the outcome out directly.
+- Source auto-follow now follows up to two additional local call levels, with at most five snippets and 4,300 characters. Tool traces name the symbols and paths included in the follow-up, making the evidence path auditable without additional model requests.
+- A post-follow live rerun timed out both investigators' first NVIDIA requests after 122.468 seconds; no baseline ran and localization is `incomplete`. This is an availability observation and cannot demonstrate a live localization improvement.
 - A separate verifier call completed in 16.4 seconds using cached investigator results. It is a reviewer-only run, not another live end-to-end run.
 - The newest budget-matched comparison used 10 requests for the pair and 10 for the single-agent path in 88.312 seconds. The pair's primary hit was false and recall@3 was 0.2; one investigator returned no finding, so cross-checking and verification were skipped. The baseline exhausted its request budget after a malformed final response/correction, so the overall comparison is incomplete despite matched request counts. Report: `data/benchmarks/click-3449-quality-gates-v2-20261029.json`.
 - An earlier 11-vs-11 report completed on the same Click case. It ranked `_termui_impl.py` first for the pair and `testing.py` first for the baseline; both recalls were 0.2 and the verifier returned `insufficient_evidence`. This remains one-case evidence, not a general result.
@@ -38,6 +41,7 @@ Add a versioned result summary built once from the investigator results, verifie
 Represent these dimensions separately:
 
 - **Investigation:** complete or incomplete, including whether both investigators returned.
+- **Finding summary:** incomplete, no findings, findings without verified citations, or verified citations present, with bounded counts; zero findings remain a legitimate scored miss when the completed run has gold labels.
 - **Citation validation:** not present, present but none valid, partly valid, or all valid; valid means path, source range, quote, and any supplied symbol passed deterministic checks.
 - **Cross-check:** use the explicit states `not_applicable` (single-agent baseline), `needs_two_agents`, `incomplete`, `no_verified_citations`, `different_files`, `same_file`, or `overlapping_lines`.
 - **Verifier:** reviewed, skipped with reason, unavailable, or not requested. This is optional and must not erase valid investigator output.
@@ -60,6 +64,7 @@ Represent these dimensions separately:
 - Preserve two independent concurrent investigators, current per-request timeout, per-investigator wall-clock budget, and at most one verifier call.
 - Add/standardize per-stage timing and terminal status so slow requests, malformed responses, invalid citations, and verifier timeouts are distinguishable.
 - Do not add more agents, tool rounds, streaming, or request retries until a measured case shows the current budget is inadequate. Any added request must be included in the comparison budget.
+- Deterministic local source auto-follow may traverse no more than two local call hops from inspected source and must stay within five snippets and 4,300 characters; trace entries list each followed symbol and path.
 - Do not promise identical model answers. If a fixed API seed is evaluated, document that NVIDIA describes it as best-effort determinism; require repeated-run evidence before making it the default.
 
 ### 4. Use narrow, evidence-driven changes

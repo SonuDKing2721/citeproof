@@ -112,6 +112,37 @@ class RunStateContractTests(unittest.TestCase):
 
 
 class RunReportV2Tests(unittest.TestCase):
+    def test_completed_empty_investigation_has_an_explicit_no_findings_outcome(self):
+        report = build_run_report(
+            {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [result("A"), result("B")],
+        )
+
+        self.assertEqual(report["status"], "complete")
+        self.assertEqual(report["metrics"]["gold_file_recall_at_3"], 0.0)
+        self.assertEqual(report["finding_summary"], {
+            "status": "no_findings",
+            "finding_count": 0,
+            "agents_with_findings": 0,
+            "verified_citation_count": 0,
+            "required_agents": 2,
+        })
+
+    def test_incomplete_investigation_is_not_labeled_a_completed_empty_miss(self):
+        report = build_run_report(
+            {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [result("A", error="timeout"), result("B")],
+        )
+
+        self.assertEqual(report["finding_summary"]["status"], "incomplete")
+        self.assertEqual(report["finding_summary"]["required_agents"], 2)
+
     def test_report_records_human_diagnosis_review_separately_from_model_validation(self):
         report = build_run_report(
             {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},

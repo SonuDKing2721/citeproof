@@ -179,6 +179,16 @@ Expected: `200`.
 
 - [x] **Step 5: Run one current live end-to-end comparison only if the free NVIDIA endpoint remains available.** Used the exact clean pre-fix pin and saved a v2 comparison with measured durations. The free NVIDIA route responded; the pair completed but the baseline exhausted its request budget after malformed final output, so the overall comparison is retained as incomplete rather than called a pass.
 
+## Task 5: Surface completed empty outcomes and follow bounded local calls
+
+**Files:** `citeproof/evaluation.py`, `citeproof/agent.py`, `app.py`, `tests/test_evaluation.py`, `tests/test_agent.py`, `tests/test_app_ui.py`
+
+- [x] **Step 1: Add failing tests.** Require complete zero-finding reports to carry a `no_findings` summary and preserve 0% recall; incomplete runs must remain `incomplete`. Require the UI to say when a completed investigation returned no findings. Require source auto-follow to reach a nested imported helper and expose followed paths in the trace.
+- [x] **Step 2: Add the deterministic report and UI summary.** Keep run/localization completion semantics unchanged, but export a bounded per-run `finding_summary` and display a clear no-findings or no-verified-citations outcome.
+- [x] **Step 3: Extend local source following without adding model calls.** Follow no more than two additional call levels, five snippets, and 4,300 characters; preserve import-resolution rules and log each included symbol/path in the investigator trace.
+- [x] **Step 4: Verify focused and full checks.** The new regression tests first failed on the old implementation. Focused tests then passed; the full suite passed **120 tests**, `compileall` passed, and `git diff --check` reported only expected LF/CRLF notices.
+- [x] **Step 5: Rerun the exact pinned Click #3449 comparison through the existing free NVIDIA prototype route.** No paid fallback was configured. Both first requests timed out after 122.468 seconds, so the saved comparison is incomplete with no localization score: `data/benchmarks/click-3449-post-follow-quality-20261029.json`.
+
 ## Plan self-review
 
 - All seven run-state dimensions are covered by projection tests, JSON export tests, UI tests, and compatibility tests.

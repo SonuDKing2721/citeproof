@@ -146,6 +146,35 @@ def run_status_payload(
     }
 
 
+def _finding_summary(results: list[AgentResult], minimum_agents: int) -> dict[str, str | int]:
+    required_results = results[:minimum_agents]
+    investigation_complete = (
+        len(required_results) == minimum_agents
+        and not any(result.error for result in required_results)
+    )
+    findings = [finding for result in required_results for finding in result.findings]
+    verified_citation_count = sum(
+        citation.valid
+        for finding in findings
+        for citation in finding.citations
+    )
+    if not investigation_complete:
+        status = "incomplete"
+    elif not findings:
+        status = "no_findings"
+    elif verified_citation_count == 0:
+        status = "no_verified_citations"
+    else:
+        status = "verified_citations_present"
+    return {
+        "status": status,
+        "finding_count": len(findings),
+        "agents_with_findings": sum(bool(result.findings) for result in required_results),
+        "verified_citation_count": verified_citation_count,
+        "required_agents": minimum_agents,
+    }
+
+
 def _safe_timings(timings: dict[str, Any] | None) -> dict[str, float | None]:
     timings = timings if isinstance(timings, dict) else {}
     normalized: dict[str, float | None] = {}
@@ -301,6 +330,7 @@ def build_run_report(
             "primary_hit_at_1": metrics.primary_hit_at_1,
             "gold_file_recall_at_3": metrics.gold_file_recall_at_3,
         },
+        "finding_summary": _finding_summary(results, minimum_agents),
         "evidence": {
             "agents_with_verified_citations": agents_with_verified_citations,
             "cross_check_status": cross_check_status,
@@ -454,6 +484,7 @@ def build_comparison_report(
         "pair": {
             "model_requests": comparison.pair_model_requests,
             "localization": metric_payload(comparison.pair_metrics),
+            "finding_summary": pair_report["finding_summary"],
             "cross_check": pair_report["evidence"]["cross_check_status"],
             "states": pair_report["states"],
             "model_settings": pair_report["model_settings"],
@@ -463,6 +494,7 @@ def build_comparison_report(
         "baseline": {
             "model_requests": comparison.baseline_model_requests,
             "localization": metric_payload(comparison.baseline_metrics),
+            "finding_summary": baseline_report["finding_summary"],
             "cross_check": "not_applicable",
             "states": baseline_report["states"],
             "model_settings": baseline_report["model_settings"],

@@ -233,6 +233,21 @@ def render_run(run: dict) -> None:
         st.header("06  /  Smoke Evaluation")
         verified_agent_count = report["evidence"]["agents_with_verified_citations"]
         required_agent_count = 1 if run_states["workflow_kind"] == "single_agent_baseline" else 2
+        finding_summary = report["finding_summary"]
+        if finding_summary["status"] == "no_findings":
+            empty_message = (
+                "Investigation completed with no findings: "
+                f"0/{finding_summary['required_agents']} required investigator(s) returned a finding."
+            )
+            recall = metrics["gold_file_recall_at_3"]
+            if report["status"] == "complete" and recall is not None:
+                empty_message += f" Localization scored {recall:.0%} gold-file recall for this case."
+            st.warning(empty_message)
+        elif finding_summary["status"] == "no_verified_citations":
+            st.warning(
+                f"Investigation returned {finding_summary['finding_count']} finding(s), but none of their citations "
+                "passed source verification; localization only counts verified citations."
+            )
         if verified_agent_count < required_agent_count:
             st.warning(
                 f"Verified citations were returned by {verified_agent_count} of {required_agent_count} required investigator(s); "

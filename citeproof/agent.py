@@ -25,6 +25,9 @@ from .checker import check_result
 
 MAX_COMPLETIONS_PER_AGENT = 4
 MAX_FINAL_RESPONSE_RETRIES = 1
+MAX_AUTO_FOLLOW_DEPTH = 2
+MAX_AUTO_FOLLOW_SNIPPETS = 5
+MAX_AUTO_FOLLOW_CHARS = 4300
 
 
 class ModelRequestBudgetExceeded(RuntimeError):
@@ -136,75 +139,102 @@ def _module_level_symbol_spans(repo: Repo, relative_path: str, symbol_name: str)
 
 
 def _auto_follow_local_calls(repo: Repo, relative_path: str, start_line: int, end_line: int) -> str:
-    """Follow explicit imported calls and module-local functions in inspected source."""
-    try:
-        source_path = repo._confined(relative_path)
-        source = source_path.read_text(encoding="utf-8", errors="replace")
-        tree = ast.parse(source)
-    except (OSError, SyntaxError, ValueError):
-        return ""
-
-    local_symbols = {
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-    }
-    imported_symbols: dict[str, set[tuple[str, str]]] = {}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ImportFrom):
-            continue
-        imported_module = _resolve_import_module_file(repo, relative_path, node)
-        if not imported_module:
-            continue
-        for alias in node.names:
-            if alias.name == "*":
-                continue
-            local_name = alias.asname or alias.name
-            imported_symbols.setdefault(local_name, set()).add((imported_module, alias.name))
-
-    call_names: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not start_line <= node.lineno <= end_line:
-            continue
-        function = node.func
-        if isinstance(function, ast.Name):
-            name = function.id
-        elif isinstance(function, ast.Attribute):
-            name = function.attr
-        else:
-            continue
-        if name not in call_names and name not in {"flush", "write", "close", "getattr", "setattr", "str", "repr"}:
-            call_names.append(name)
-
+    """Follow explicit local calls for two bounded hops from inspected source."""
+    queue = [(relative_path, start_line, end_line, 0)]
     snippets: list[str] = []
-    seen_names: set[str] = set()
-    for name in call_names:
-        bindings = imported_symbols.get(name, set())
-        if name in seen_names:
+    seen_symbols: set[tuple[str, str]] = set()
+    total_chars = 0
+
+    while queue and len(snippets) < MAX_AUTO_FOLLOW_SNIPPETS and total_chars < MAX_AUTO_FOLLOW_CHARS:
+        current_path, current_start, current_end, depth = queue.pop(0)
+        try:
+            source = repo._confined(current_path).read_text(encoding="utf-8", errors="replace")
+            tree = ast.parse(source)
+        except (OSError, SyntaxError, ValueError):
             continue
-        if len(bindings) == 1:
-            path, imported_name = next(iter(bindings))
-            same_module_call = False
-        elif not bindings and name in local_symbols:
-            path, imported_name = relative_path, name
-            same_module_call = True
-        else:
-            continue
-        if (path == relative_path and not same_module_call) or path.startswith(("tests/", "examples/", "docs/")):
-            continue
-        for line_start, line_end, candidate_lines in _module_level_symbol_spans(repo, path, imported_name):
-            if candidate_lines and re.search(r":\s*(?:\.\.\.|pass)\s*(?:#.*)?$", candidate_lines[-1].strip()):
+
+        local_symbols = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
+        imported_symbols: dict[str, set[tuple[str, str]]] = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
                 continue
-            seen_names.add(name)
-            bounded_end = min(line_end, line_start + 120)
-            try:
-                contents = repo.read_file(path, line_start, bounded_end)
-            except (OSError, ValueError):
+            imported_module = _resolve_import_module_file(repo, current_path, node)
+            if not imported_module:
                 continue
-            snippets.append(f"Auto-followed local call '{name}' in {path}:\n{contents}")
-            if len(snippets) >= 3:
-                return "\n\n".join(snippets)
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                local_name = alias.asname or alias.name
+                imported_symbols.setdefault(local_name, set()).add((imported_module, alias.name))
+
+        call_names: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not current_start <= node.lineno <= current_end:
+                continue
+            function = node.func
+            if isinstance(function, ast.Name):
+                name = function.id
+            elif isinstance(function, ast.Attribute):
+                name = function.attr
+            else:
+                continue
+            if name not in call_names and name not in {"flush", "write", "close", "getattr", "setattr", "str", "repr"}:
+                call_names.append(name)
+
+        # Visit same-module helpers before imported utilities so a narrow
+        # follow budget reaches the relevant implementation branch first.
+        call_names.sort(key=lambda name: (0 if not imported_symbols.get(name) and name in local_symbols else 1))
+        for name in call_names:
+            if len(snippets) >= MAX_AUTO_FOLLOW_SNIPPETS or total_chars >= MAX_AUTO_FOLLOW_CHARS:
+                break
+            bindings = imported_symbols.get(name, set())
+            if len(bindings) == 1:
+                path, imported_name = next(iter(bindings))
+                same_module_call = False
+            elif not bindings and name in local_symbols:
+                path, imported_name = current_path, name
+                same_module_call = True
+            else:
+                continue
+            if (path == current_path and not same_module_call) or path.startswith(("tests/", "examples/", "docs/")):
+                continue
+            symbol_key = (path, imported_name)
+            if symbol_key in seen_symbols:
+                continue
+            for line_start, line_end, candidate_lines in _module_level_symbol_spans(repo, path, imported_name):
+                if candidate_lines and re.search(r":\s*(?:\.\.\.|pass)\s*(?:#.*)?$", candidate_lines[-1].strip()):
+                    continue
+                seen_symbols.add(symbol_key)
+                bounded_end = min(line_end, line_start + 120)
+                try:
+                    contents = repo.read_file(path, line_start, bounded_end)
+                except (OSError, ValueError):
+                    continue
+                header = f"Auto-followed local call '{name}' in {path}:\n"
+                remaining = MAX_AUTO_FOLLOW_CHARS - total_chars - len(header)
+                if remaining <= 0:
+                    break
+                if len(contents) > remaining:
+                    contents = contents[:remaining]
+                snippet = header + contents
+                snippets.append(snippet)
+                total_chars += len(snippet)
+                if depth < MAX_AUTO_FOLLOW_DEPTH:
+                    queue.append((path, line_start, bounded_end, depth + 1))
+
     return "\n\n".join(snippets)
+
+
+def _auto_follow_trace_entry(followups: str) -> str:
+    calls = re.findall(r"^Auto-followed local call '([^']+)' in ([^:]+):", followups, re.M)
+    if not calls:
+        return "auto-followed local source calls"
+    summary = "; ".join(f"{name} ({path})" for name, path in calls)
+    return f"auto-followed local calls: {summary}"[:280]
 
 
 def _content_to_findings(text: str) -> list[Finding]:
@@ -625,7 +655,7 @@ def investigate(
                             followups = ""
                         if followups:
                             tool_result += "\n\n" + followups
-                            trace.append("auto-followed local source calls")
+                            trace.append(_auto_follow_trace_entry(followups))
                             if on_progress:
                                 on_progress("Tool call: automatically followed local source calls.")
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": tool_result[:8000]})

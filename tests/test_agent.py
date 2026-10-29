@@ -273,6 +273,46 @@ UnicodeDecodeError: invalid start byte
 
 
 class AutoFollowResolutionTests(unittest.TestCase):
+    def test_follows_nested_imported_helpers_within_a_bounded_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "api.py").write_text(
+                "from middle import get_stream\n\n"
+                "def run():\n"
+                "    return get_stream()\n",
+                encoding="utf-8",
+            )
+            Path(tmp, "middle.py").write_text(
+                "from implementation import make_stream\n\n"
+                "def get_stream():\n"
+                "    return make_stream()\n",
+                encoding="utf-8",
+            )
+            Path(tmp, "implementation.py").write_text(
+                "from io import TextIOWrapper\n\n"
+                "def make_stream():\n"
+                "    return TextIOWrapper(stream)\n",
+                encoding="utf-8",
+            )
+
+            followup = _auto_follow_local_calls(Repo(tmp), "api.py", 1, 4)
+
+        self.assertIn("Auto-followed local call 'get_stream' in middle.py", followup)
+        self.assertIn("Auto-followed local call 'make_stream' in implementation.py", followup)
+        self.assertIn("TextIOWrapper(stream)", followup)
+
+    def test_auto_follow_trace_names_the_followed_symbols_and_files(self):
+        followup = (
+            "Auto-followed local call 'get_pager_file' in src/click/_termui_impl.py:\n"
+            "431: def get_pager_file(): pass\n"
+            "\nAuto-followed local call '_pager_contextmanager' in src/click/_termui_impl.py:\n"
+            "399: def _pager_contextmanager(): pass"
+        )
+
+        trace_entry = agent_module._auto_follow_trace_entry(followup)
+
+        self.assertIn("get_pager_file (src/click/_termui_impl.py)", trace_entry)
+        self.assertIn("_pager_contextmanager (src/click/_termui_impl.py)", trace_entry)
+
     def test_follows_module_local_helper_calls_from_read_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             Path(tmp, "impl.py").write_text(

@@ -23,6 +23,22 @@ class AppUITests(unittest.TestCase):
             captions,
         )
 
+    def test_completed_empty_run_calls_out_zero_findings_and_zero_localization(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        app.session_state["last_run"] = make_run_snapshot(
+            [AgentResult("Investigator A", [], []), AgentResult("Investigator B", [], [])],
+            "abc123",
+            "Bug report",
+            {"issue_id": "org/repo#1", "primary_files": ["src/fix.py"]},
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        warnings = [item.value for item in app.warning]
+        self.assertTrue(any("investigation completed with no findings" in item.lower() for item in warnings))
+        self.assertTrue(any("0% gold-file recall" in item.lower() for item in warnings))
+
     def test_saved_review_renders_candidate_assessment_and_unrun_test_label(self):
         app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
         app.session_state["last_run"] = make_run_snapshot(
