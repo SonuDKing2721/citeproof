@@ -10,6 +10,23 @@ class Citation:
     quote: str
     valid: bool = False
     reason: str = "Not checked"
+    outcome: str | None = None
+    claimed_start_line: int | None = None
+    claimed_end_line: int | None = None
+    corrected_start_line: int | None = None
+    corrected_end_line: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.claimed_start_line is None:
+            self.claimed_start_line = self.start_line
+        if self.claimed_end_line is None:
+            self.claimed_end_line = self.end_line
+
+    @property
+    def effective_range(self) -> tuple[int, int]:
+        if self.corrected_start_line is not None and self.corrected_end_line is not None:
+            return self.corrected_start_line, self.corrected_end_line
+        return self.start_line, self.end_line
 
 
 @dataclass

@@ -13,7 +13,9 @@ MAX_MATCHES = 30
 
 
 class RepoError(ValueError):
-    pass
+    def __init__(self, message: str, *, code: str | None = None):
+        super().__init__(message)
+        self.code = code
 
 
 class Repo:
@@ -51,15 +53,26 @@ class Repo:
         return head
 
     def _confined(self, relative_path: str) -> Path:
-        candidate = (self.root / relative_path).resolve(strict=True)
+        try:
+            candidate = (self.root / relative_path).resolve(strict=True)
+        except FileNotFoundError as exc:
+            raise RepoError(str(exc), code="path_missing") from exc
+        except OSError as exc:
+            raise RepoError(str(exc), code="path_unreadable") from exc
         try:
             candidate.relative_to(self.root)
         except ValueError as exc:
-            raise RepoError("Path is outside the selected repository.") from exc
-        if not candidate.is_file():
-            raise RepoError("Path is not a file.")
-        if candidate.stat().st_size > MAX_FILE_BYTES:
-            raise RepoError(f"File exceeds the {MAX_FILE_BYTES}-byte read limit.")
+            raise RepoError("Path is outside the selected repository.", code="path_outside_repo") from exc
+        try:
+            if not candidate.is_file():
+                raise RepoError("Path is not a file.", code="path_missing")
+            if candidate.stat().st_size > MAX_FILE_BYTES:
+                raise RepoError(
+                    f"File exceeds the {MAX_FILE_BYTES}-byte read limit.",
+                    code="path_unreadable",
+                )
+        except OSError as exc:
+            raise RepoError(str(exc), code="path_unreadable") from exc
         return candidate
 
     def python_files(self) -> list[Path]:
