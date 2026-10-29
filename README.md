@@ -49,6 +49,8 @@ In the app, select a local Python repository folder, paste an issue title and de
 
 For a no-call presentation path on Click #3449, use **Load cached A/B + live verifier demo · no model call**. The interface labels the investigator pair as cached, rechecks its citations against the pinned checkout, and identifies the verifier review as a separate live call.
 
+The primary **Load Cached Click #3449 Demo · No Model Call** button reloads the original v1 snapshot and rechecks its citations. The current app's v2 export ranks `src/click/termui.py` first, so `hit@1=false` and recall@3 is `0.2`; the v1 file's stored metric said hit@1 was true. The unchanged historical v1 record is preserved, and the rechecked export is [`click-3449-cached-demo-rechecked-20261029.json`](data/benchmarks/click-3449-cached-demo-rechecked-20261029.json). Use that v2 result when narrating the current UI. The diagnosis review remains unreviewed for this particular cached snapshot; the separate live run has a partly-supported human review.
+
 The eight curated cases are public Python issues with separate issue text and gold labels:
 
 | Issue | Pre-fix pin | Use and caution |
