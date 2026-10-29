@@ -6,7 +6,9 @@ from citeproof.models import AgentResult, Citation, Finding, VerificationReview
 from citeproof.evaluation import build_run_report
 from citeproof.presentation import (
     agent_result_card_status,
+    citation_range_details,
     citation_quote_details,
+    finding_citation_summary,
     make_run_snapshot,
     snapshot_from_saved_report,
     verification_from_payload,
@@ -15,6 +17,39 @@ from citeproof.repo import Repo
 
 
 class CitationPresentationTests(unittest.TestCase):
+    def test_finding_citation_summary_has_all_four_states(self):
+        self.assertEqual(finding_citation_summary(Finding("claim", "", [])), "no_citations")
+        self.assertEqual(
+            finding_citation_summary(Finding("claim", "", [Citation("a.py", "", 1, 1, "x", outcome="quote_not_found")])),
+            "none_verified",
+        )
+        self.assertEqual(
+            finding_citation_summary(Finding("claim", "", [
+                Citation("a.py", "", 1, 1, "x", outcome="verified_exact"),
+                Citation("b.py", "", 1, 1, "y", outcome="quote_not_found"),
+            ])),
+            "partly_verified",
+        )
+        self.assertEqual(
+            finding_citation_summary(Finding("claim", "", [
+                Citation("a.py", "", 1, 1, "x", outcome="verified_exact"),
+                Citation("b.py", "", 1, 1, "y", outcome="corrected_unique_exact_quote"),
+            ])),
+            "all_verified",
+        )
+
+    def test_corrected_citation_range_details_keep_claim_and_correction_distinct(self):
+        citation = Citation(
+            "a.py", "", 2, 3, "x", outcome="corrected_unique_exact_quote",
+            claimed_start_line=2, claimed_end_line=3,
+            corrected_start_line=2, corrected_end_line=2,
+        )
+
+        details = citation_range_details(citation)
+
+        self.assertIn("Claimed range: 2-3", details)
+        self.assertIn("Corrected range: 2-2", details)
+
     def test_agent_card_labels_all_rejected_citations_as_unverified(self):
         result = AgentResult(
             "Investigator A",
@@ -118,9 +153,14 @@ class CitationPresentationTests(unittest.TestCase):
                             "symbol": "",
                             "start_line": 1,
                             "end_line": 1,
+                            "claimed_start_line": 1,
+                            "claimed_end_line": 1,
+                            "corrected_start_line": 2,
+                            "corrected_end_line": 2,
                             "quote": "needle = True",
                             "valid": False,
                             "reason": "Saved result is untrusted until rechecked.",
+                            "outcome": "path_outside_repo",
                         }],
                     }],
                 },
@@ -129,7 +169,7 @@ class CitationPresentationTests(unittest.TestCase):
         }
 
         with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "sample.py").write_text("needle = True\n", encoding="utf-8")
+            Path(tmp, "sample.py").write_text("header\nneedle = True\n", encoding="utf-8")
             repo = Repo(tmp)
             repo.commit = "abc123"
             snapshot = snapshot_from_saved_report(report, gold_case, "Issue title", repo)
@@ -142,6 +182,9 @@ class CitationPresentationTests(unittest.TestCase):
         self.assertEqual(snapshot["model_request_counts"], {"investigators": 9, "verification": 1, "total": 10})
         self.assertFalse(snapshot["results"][0].model_requests_known)
         self.assertTrue(snapshot["results"][0].findings[0].citations[0].valid)
+        self.assertEqual(snapshot["results"][0].findings[0].citations[0].outcome, "corrected_unique_exact_quote")
+        self.assertEqual(snapshot["results"][0].findings[0].citations[0].claimed_start_line, 1)
+        self.assertEqual(snapshot["results"][0].findings[0].citations[0].corrected_start_line, 2)
         restored_report = build_run_report(
             gold_case,
             snapshot["repo_commit"],

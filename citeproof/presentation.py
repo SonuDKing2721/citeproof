@@ -4,9 +4,31 @@ from datetime import datetime, timezone
 import math
 
 from .checker import check_result
-from .evaluation import DIAGNOSIS_REVIEW_STATES
-from .models import AgentResult, Citation, Finding, VerificationReview
+from .models import AgentResult, Citation, DIAGNOSIS_REVIEW_STATES, Finding, VerificationReview
 from .repo import Repo
+
+VERIFIED_CITATION_OUTCOMES = frozenset({"verified_exact", "corrected_unique_exact_quote"})
+
+
+def finding_citation_summary(finding: Finding) -> str:
+    """Return the source-check state for one finding, separate from its diagnosis."""
+    if not finding.citations:
+        return "no_citations"
+    verified = sum(citation.outcome in VERIFIED_CITATION_OUTCOMES for citation in finding.citations)
+    if verified == 0:
+        return "none_verified"
+    if verified < len(finding.citations):
+        return "partly_verified"
+    return "all_verified"
+
+
+def citation_range_details(citation: Citation) -> str:
+    claimed_start = citation.claimed_start_line if citation.claimed_start_line is not None else citation.start_line
+    claimed_end = citation.claimed_end_line if citation.claimed_end_line is not None else citation.end_line
+    details = f"Claimed range: {claimed_start}-{claimed_end}"
+    if citation.corrected_start_line is not None and citation.corrected_end_line is not None:
+        details += f" · Corrected range: {citation.corrected_start_line}-{citation.corrected_end_line}"
+    return details
 
 
 def citation_quote_details(citation: Citation) -> tuple[str, str]:
@@ -22,7 +44,7 @@ def agent_result_card_status(result: AgentResult) -> tuple[str, str]:
         return "No findings returned", "No model claim was returned for evidence review."
 
     citations = [citation for finding in result.findings for citation in finding.citations]
-    verified = sum(citation.valid for citation in citations)
+    verified = sum(citation.outcome in VERIFIED_CITATION_OUTCOMES for citation in citations)
     finding_label = f"{len(result.findings)} finding{'s' if len(result.findings) != 1 else ''} returned"
     if not citations:
         return finding_label + " · no citations", "The returned claims have no source citations and remain unverified."
@@ -121,12 +143,16 @@ def snapshot_from_saved_report(
                     if not isinstance(raw_citation, dict):
                         continue
                     try:
+                        start_line = int(raw_citation.get("claimed_start_line", raw_citation["start_line"]))
+                        end_line = int(raw_citation.get("claimed_end_line", raw_citation["end_line"]))
                         citations.append(Citation(
                             path=str(raw_citation["path"])[:300],
                             symbol=str(raw_citation.get("symbol", ""))[:160],
-                            start_line=int(raw_citation["start_line"]),
-                            end_line=int(raw_citation["end_line"]),
+                            start_line=start_line,
+                            end_line=end_line,
                             quote=str(raw_citation["quote"])[:2000],
+                            claimed_start_line=start_line,
+                            claimed_end_line=end_line,
                         ))
                     except (KeyError, TypeError, ValueError):
                         continue

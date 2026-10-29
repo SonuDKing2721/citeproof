@@ -14,15 +14,9 @@ from .model_config import (
     MODEL_REQUEST_TIMEOUT_SECONDS,
     VERIFIER_REQUEST_SETTINGS,
 )
-from .models import AgentResult, VerificationReview
+from .models import AgentResult, DIAGNOSIS_REVIEW_STATES, Finding, VerificationReview
 
-DIAGNOSIS_REVIEW_STATES = {
-    "not_reviewed",
-    "supported",
-    "partly_supported",
-    "unsupported",
-    "incorrect",
-}
+from .presentation import finding_citation_summary
 
 
 @dataclass(frozen=True)
@@ -115,15 +109,9 @@ def run_status_payload(
         for finding in result.findings
         for citation in finding.citations
     ]
-    valid_citations = sum(citation.valid for citation in citations)
-    if not citations:
-        citation_validation = "not_present"
-    elif valid_citations == 0:
-        citation_validation = "none_valid"
-    elif valid_citations < len(citations):
-        citation_validation = "partly_valid"
-    else:
-        citation_validation = "all_valid"
+    citation_validation = finding_citation_summary(
+        Finding("", "", citations)
+    )
 
     if workflow_kind == "single_agent_baseline":
         cross_check = "not_applicable"
@@ -154,7 +142,7 @@ def _finding_summary(results: list[AgentResult], minimum_agents: int) -> dict[st
     )
     findings = [finding for result in required_results for finding in result.findings]
     verified_citation_count = sum(
-        citation.valid
+        citation.outcome in {"verified_exact", "corrected_unique_exact_quote"}
         for finding in findings
         for citation in finding.citations
     )
@@ -356,15 +344,21 @@ def build_run_report(
                     {
                         "claim": finding.claim,
                         "explanation": finding.explanation,
+                        "citation_summary": finding_citation_summary(finding),
                         "citations": [
                             {
                                 "path": citation.path,
                                 "symbol": citation.symbol,
                                 "start_line": citation.start_line,
                                 "end_line": citation.end_line,
+                                "claimed_start_line": citation.claimed_start_line,
+                                "claimed_end_line": citation.claimed_end_line,
+                                "corrected_start_line": citation.corrected_start_line,
+                                "corrected_end_line": citation.corrected_end_line,
                                 "quote": citation.quote,
                                 "valid": citation.valid,
                                 "reason": citation.reason,
+                                "outcome": citation.outcome,
                             }
                             for citation in finding.citations
                         ],

@@ -1,5 +1,13 @@
 from dataclasses import dataclass, field
 
+DIAGNOSIS_REVIEW_STATES = {
+    "not_reviewed",
+    "supported",
+    "partly_supported",
+    "unsupported",
+    "incorrect",
+}
+
 
 @dataclass
 class Citation:

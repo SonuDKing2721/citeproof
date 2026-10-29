@@ -11,7 +11,7 @@ from citeproof.models import AgentResult, Citation, Finding, VerificationReview
 
 def result(name, files=(), error=None):
     citations = [
-        Citation(path=path, symbol="", start_line=1, end_line=1, quote="x", valid=True)
+        Citation(path=path, symbol="", start_line=1, end_line=1, quote="x", valid=True, outcome="verified_exact")
         for path in files
     ]
     findings = [Finding("claim", "explanation", citations)] if citations else []
@@ -34,7 +34,7 @@ class RunStateContractTests(unittest.TestCase):
 
         self.assertEqual(state, {
             "investigation": "complete",
-            "citation_validation": "all_valid",
+            "citation_validation": "all_verified",
             "cross_check": "overlapping_lines",
             "verification": "unavailable",
             "localization": "scored",
@@ -48,7 +48,7 @@ class RunStateContractTests(unittest.TestCase):
             {"primary_files": ["src/main.py"]},
         )
         self.assertEqual(empty["investigation"], "complete")
-        self.assertEqual(empty["citation_validation"], "not_present")
+        self.assertEqual(empty["citation_validation"], "no_citations")
         self.assertEqual(empty["cross_check"], "no_verified_citations")
         self.assertEqual(empty["verification"], "not_requested")
         self.assertEqual(empty["localization"], "scored")
@@ -56,8 +56,9 @@ class RunStateContractTests(unittest.TestCase):
         rejected = [result("A", ["src/main.py"]), result("B", ["src/main.py"])]
         for agent in rejected:
             agent.findings[0].citations[0].valid = False
+            agent.findings[0].citations[0].outcome = "quote_not_found"
         invalid = self.project(rejected, {"primary_files": ["src/main.py"]})
-        self.assertEqual(invalid["citation_validation"], "none_valid")
+        self.assertEqual(invalid["citation_validation"], "none_verified")
         self.assertEqual(invalid["cross_check"], "no_verified_citations")
         self.assertEqual(invalid["localization"], "scored")
 
@@ -67,7 +68,7 @@ class RunStateContractTests(unittest.TestCase):
             Citation("src/other.py", "", 1, 1, "x", valid=False)
         )
         partial = self.project(mixed, {"primary_files": ["src/main.py"]})
-        self.assertEqual(partial["citation_validation"], "partly_valid")
+        self.assertEqual(partial["citation_validation"], "partly_verified")
         self.assertEqual(partial["localization"], "scored")
 
         missing_labels = self.project([result("A"), result("B")], {})
@@ -369,6 +370,24 @@ class LocalizationEvaluationTests(unittest.TestCase):
         self.assertEqual(report["evidence"]["agents_with_verified_citations"], 1)
         self.assertEqual(report["evidence"]["cross_check_status"], "no_verified_citations")
         self.assertIn("does not show full-run corroboration", report["evidence"]["note"])
+
+    def test_report_exports_typed_citation_state_and_finding_summary(self):
+        rejected = Citation("src/main.py", "", 7, 9, "missing quote", outcome="quote_not_found", reason="Quote not found.")
+        report = build_run_report(
+            {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [AgentResult("A", [Finding("claim", "explanation", [rejected])], []), result("B")],
+        )
+
+        serialized = report["agents"][0]["findings"][0]
+        self.assertEqual(serialized["citation_summary"], "none_verified")
+        self.assertEqual(serialized["citations"][0]["outcome"], "quote_not_found")
+        self.assertEqual(serialized["citations"][0]["claimed_start_line"], 7)
+        self.assertEqual(serialized["citations"][0]["claimed_end_line"], 9)
+        self.assertEqual(serialized["citations"][0]["corrected_start_line"], None)
+        self.assertEqual(report["states"]["citation_validation"], "none_verified")
 
     def test_incomplete_run_export_is_named_as_incomplete_and_keeps_partial_evidence(self):
         report = {

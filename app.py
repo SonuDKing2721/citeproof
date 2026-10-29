@@ -17,7 +17,9 @@ from citeproof.evaluation import build_run_report, export_run_report
 from citeproof.orchestration import investigate_pair
 from citeproof.presentation import (
     agent_result_card_status,
+    citation_range_details,
     citation_quote_details,
+    finding_citation_summary,
     make_run_snapshot,
     normalize_diagnosis_review,
     snapshot_from_saved_report,
@@ -87,12 +89,17 @@ def render_run(run: dict) -> None:
             for finding_index, finding in enumerate(result.findings):
                 with st.expander(finding.claim or "Unspecified claim", expanded=True):
                     st.write(finding.explanation)
+                    summary = finding_citation_summary(finding)
+                    st.caption(f"Citation support state: `{summary}`")
                     if not finding.citations:
-                        st.caption("No citations were supplied.")
+                        st.caption("No checked source support was supplied; this is not a verdict that the diagnosis is false.")
                     for citation_index, citation in enumerate(finding.citations):
                         icon = "✅" if citation.valid else "❌"
                         st.markdown(f"{icon} `{citation.path}:{citation.start_line}-{citation.end_line}` · `{citation.symbol or 'no symbol'}`")
-                        st.caption(citation.reason)
+                        st.caption(f"Outcome: `{citation.outcome or 'not_checked'}` · {citation.reason}")
+                        st.caption(citation_range_details(citation))
+                        if summary == "none_verified":
+                            st.caption("No checked citation supports this finding; that does not show the diagnosis is false.")
                         label, quote = citation_quote_details(citation)
                         ui.badge(label, variant=("default" if citation.valid else "destructive"), key=f"quote-{agent_index}-{finding_index}-{citation_index}")
                         st.code(quote, language="python")

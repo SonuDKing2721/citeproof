@@ -3,11 +3,47 @@ from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
-from citeproof.models import AgentResult, VerificationReview
+from citeproof.models import AgentResult, Citation, Finding, VerificationReview
 from citeproof.presentation import make_run_snapshot
 
 
 class AppUITests(unittest.TestCase):
+    def test_evidence_review_renders_outcomes_claimed_and_corrected_ranges_and_rejected_quote(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        corrected = Citation(
+            "src/example.py", "", 7, 9, "actual source",
+            valid=True, outcome="corrected_unique_exact_quote",
+            reason="Unique exact quote; corrected line range from 7-9 to 8-8.",
+            claimed_start_line=7, claimed_end_line=9,
+            corrected_start_line=8, corrected_end_line=8,
+        )
+        rejected = Citation(
+            "src/example.py", "missing", 12, 12, "rejected source quote",
+            valid=False, outcome="quote_not_found", reason="Quoted text does not occur in this file.",
+        )
+        app.session_state["last_run"] = make_run_snapshot(
+            [AgentResult(
+                "Investigator A",
+                [Finding("Cause", "Reason", [corrected]), Finding("Second cause", "Needs review", [rejected])],
+                [],
+            ), AgentResult("Investigator B", [], [])],
+            "abc123",
+            "Bug report",
+            None,
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        captions = [element.value for element in app.caption]
+        self.assertTrue(any("Claimed range: 7-9" in value for value in captions))
+        self.assertTrue(any("Corrected range: 8-8" in value for value in captions))
+        self.assertTrue(any("corrected_unique_exact_quote" in value for value in captions))
+        code_values = [element.value for element in app.code]
+        self.assertIn("actual source", code_values)
+        self.assertIn("rejected source quote", code_values)
+        self.assertTrue(any("does not show the diagnosis is false" in value.lower() for value in captions))
+
     def test_investigation_sections_use_second_level_headings(self):
         app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
         self.assertFalse(app.exception)
