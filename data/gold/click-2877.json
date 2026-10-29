@@ -9,5 +9,6 @@
   "primary_files": ["src/click/types.py"],
   "supporting_files": ["tests/test_types.py"],
   "changed_files": ["src/click/types.py", "tests/test_types.py"],
-  "label_note": "Human-curated from the issue, fix commit, and merged PR. Changed-file labels are proxies; diagnosis must be scored separately. Never pass this file to the agents."
+  "label_note": "Human-curated from the issue, fix commit, and merged PR. Changed-file labels are proxies; diagnosis must be scored separately. Never pass this file to the agents.",
+  "evaluation_note": "The original issue links to a nearby source-code location and suggests converting the data type. Use this case as a smoke demonstration, not as a blind-localization benchmark."
 }

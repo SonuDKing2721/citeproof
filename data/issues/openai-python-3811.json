@@ -1,0 +1,8 @@
+{
+  "issue_id": "openai/openai-python#3811",
+  "issue_url": "https://github.com/openai/openai-python/issues/3811",
+  "title": "Transport errors while consuming a stream escape as raw httpx exceptions instead of `APITimeoutError` / `APIConnectionError`",
+  "repo": "openai/openai-python",
+  "commit": "ae41bc46cdd53d17e948ac8a73e16bdbf34123a1",
+  "body": "When a streamed response fails while being read, transport exceptions escape as raw HTTPX errors instead of the SDK's API timeout or connection error classes. This makes an APIError handler miss the failure. The report identifies the streaming implementation module and notes that partially consumed streams should not necessarily be retried."
+}

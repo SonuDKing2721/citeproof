@@ -1,0 +1,8 @@
+{
+  "issue_id": "pydantic/pydantic#13957",
+  "issue_url": "https://github.com/pydantic/pydantic/issues/13957",
+  "title": "TypeError: ForwardRef.__init__() got an unexpected keyword argument 'is_class' on Python 3.10",
+  "repo": "pydantic/pydantic",
+  "commit": "ca359e009fcfaff2a80df33cb99ee6ab21aaf033",
+  "body": "On Python 3.10.0, Pydantic 2.14.0 fails when a model with a string forward-reference annotation is defined. Pydantic 2.13.5 works. The package metadata declares Python >=3.10, so installers select the failing version on Python 3.10.0.\n\nReproducer:\n\nfrom pydantic import BaseModel\n\nclass M(BaseModel):\n    x: \"int\""
+}

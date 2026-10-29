@@ -1,0 +1,14 @@
+{
+  "issue_id": "pydantic/pydantic#13957",
+  "repo": "pydantic/pydantic",
+  "pre_fix_commit": "ca359e009fcfaff2a80df33cb99ee6ab21aaf033",
+  "fix_commit": "6dfea575dd3941a55bbb91524e50e34076929d61",
+  "merged_pr": 13964,
+  "fix_url": "https://github.com/pydantic/pydantic/pull/13964",
+  "diagnosis": "Pydantic passed the is_class keyword when creating a typing.ForwardRef on Python 3.10.0, where that constructor does not accept it. The merged fix uses the shorter constructor only for Python 3.10.0 and keeps the prior behavior elsewhere.",
+  "primary_files": ["pydantic/_internal/_typing_extra.py"],
+  "supporting_files": [],
+  "changed_files": ["pydantic/_internal/_typing_extra.py"],
+  "label_note": "Human-curated from issue #13957 and merged PR #13964. The PR changes one source file and does not add a regression test file. Never pass this file to the agents.",
+  "evaluation_note": "This issue was opened in October 2026 and fixed the next day. It names ForwardRef and Python 3.10.0 but does not name the Pydantic source file. The model training cutoff is unknown, and the one-file fix has no added regression test file, so treat this as a fresh smoke case rather than broad blind-localization evidence."
+}

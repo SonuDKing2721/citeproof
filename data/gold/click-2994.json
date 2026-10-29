@@ -1,0 +1,14 @@
+{
+  "issue_id": "pallets/click#2994",
+  "repo": "pallets/click",
+  "pre_fix_commit": "3c12ce7050bf63c9fa522e5d7b95543037da0f63",
+  "fix_commit": "9b327da8275bb63bd7bbd43ad8ff9862480da267",
+  "merged_pr": 3478,
+  "fix_url": "https://github.com/pallets/click/pull/3478",
+  "diagnosis": "On Windows, locate=True assembled the Explorer /select switch and the file path into one argument. A path with spaces was parsed incorrectly by Explorer. The fix passes /select, and the path as separate subprocess arguments so the path is quoted as its own argument.",
+  "primary_files": ["src/click/_termui_impl.py"],
+  "supporting_files": [],
+  "changed_files": ["src/click/_termui_impl.py"],
+  "label_note": "Human-curated from the issue and merged PR #3478. The PR changes one source line and adds no regression test. Changed-file labels are location proxies, not a diagnosis score. Never pass this file to the agents.",
+  "evaluation_note": "The report gives the public API, operating system, and a path-with-spaces reproducer, but no implementation path. This is a Windows-specific case and should not be treated as broad platform coverage. The model's training cutoff relative to the public issue and fix is unknown, so contamination cannot be ruled out."
+}

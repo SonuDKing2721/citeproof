@@ -1,0 +1,26 @@
+{
+  "issue_id": "pallets/click#3059",
+  "repo": "pallets/click",
+  "pre_fix_commit": "8240d25bdbb8c081b745199620b8f2fe03b10579",
+  "fix_commit": "665736bc85a19a7a2357c071394b4a545617faa3",
+  "merge_commit": "97210f24eb22399eb6db87d01bfef14f78862d01",
+  "merged_pr": 3507,
+  "fix_url": "https://github.com/pallets/click/pull/3507",
+  "diagnosis": "Group derives its default subcommand usage metavar from chain mode but did not account for invoke_without_command. The fix brackets the leading command token for non-chained and chained groups when a group may run without a subcommand.",
+  "primary_files": ["src/click/core.py"],
+  "supporting_files": [
+    "tests/test_arguments.py",
+    "tests/test_commands.py",
+    "docs/documentation.md",
+    "CHANGES.rst"
+  ],
+  "changed_files": [
+    "CHANGES.rst",
+    "docs/documentation.md",
+    "src/click/core.py",
+    "tests/test_arguments.py",
+    "tests/test_commands.py"
+  ],
+  "label_note": "Human-curated from merged PR #3507 and its maintainer tests/docs. Changed-file labels are location proxies, not a diagnosis score. Never pass this file to the agents.",
+  "evaluation_note": "The initial issue describes the public option and expected versus actual help text, but gives no implementation path. It exercises CLI help generation. The public issue predates the May 2026 fix; the model's training cutoff is unknown, so contamination cannot be ruled out."
+}

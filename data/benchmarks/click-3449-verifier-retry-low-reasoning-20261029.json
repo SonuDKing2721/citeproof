@@ -1,0 +1,27 @@
+{
+  "schema": "citeproof-verifier-retry/v1",
+  "run_timestamp_utc": "2026-10-28T19:07:47.065751+00:00",
+  "pair_source": "data\\benchmarks\\click-3449-live-seeded-pair-verifier-20261029.json",
+  "pair_rechecked_against_commit": "a5f5aa6d4012d256ccca24638f2642fc371e9f77",
+  "model_id": "meta/muse-glimmer-30b",
+  "provider": "NVIDIA API Catalog",
+  "reasoning_effort": "low",
+  "elapsed_seconds": 22.3,
+  "review": {
+    "status": "reviewed",
+    "assessment": "insufficient_evidence",
+    "selected_finding_id": null,
+    "supporting_evidence_ids": [
+      "A-F1-C1",
+      "B-F1-C1",
+      "B-F1-C2",
+      "B-F2-C1"
+    ],
+    "challenging_evidence_ids": [],
+    "rationale": "The checked quotes confirm that `get_pager_file` yields a stream and unconditionally calls `stream.flush()` in its finally block, that `echo_via_pager` uses `get_pager_file` as a context manager and writes to the pager, and that `CliRunner.invoke` flushes `sys.stdout` and `sys.stderr` in its finally block at the line mentioned in the traceback. These facts establish the presence of two flushes, but the supplied evidence does not show that the pager stream is the runner’s redirected stdout, that the stream is closed before the runner’s final flush, or that the `ValueError: I/O operation on closed file` is caused by the `get_pager_file` finally flush. No evidence links the flush in `get_pager_file` to a closed file or to the specific error timing, so the causal claim about a closed-file error remains unsupported by the provided quotes.",
+    "test_scenario": null,
+    "test_assertion": null,
+    "model_requests": 1,
+    "error": null
+  }
+}

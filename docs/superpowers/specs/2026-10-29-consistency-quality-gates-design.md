@@ -1,7 +1,7 @@
 # Citeproof Consistency and Reliability Gates
 
 **Date:** 2026-10-29
-**Status:** Draft for user review
+**Status:** Approved; implemented and verified
 **Scope:** Existing Citeproof workflow and its evaluation/reporting contract
 
 ## Goal
@@ -10,10 +10,12 @@ Make Citeproof's UI, JSON reports, benchmark results, and project documentation 
 
 ## Current findings
 
-- The working-tree test suite has 97 passing tests; compilation, `git diff --check`, and the local Streamlit health check pass.
+- The final full suite passed 115 tests. `compileall`, `git diff --check` (with expected LF/CRLF notices), and the local Streamlit HTTP health check passed.
 - A saved live end-to-end Click #3449 run completed in 79.7 seconds with 9 investigator requests and 1 verifier request. The investigators had checked overlapping evidence. The primary file ranked second (`hit@1=false`; `recall@3=0.2`), so it is not an unqualified localization success. Diagnosis correctness is unscored.
 - A separate verifier call completed in 16.4 seconds using cached investigator results. It is a reviewer-only run, not another live end-to-end run.
-- The handoff and README were last written before these reports and still say no end-to-end verifier run completed. The report also records `status=complete` when localization can be scored even though the verifier may be unavailable; the status needs a clearer definition in the user-facing contract.
+- The newest budget-matched comparison used 10 requests for the pair and 10 for the single-agent path in 88.312 seconds. The pair's primary hit was false and recall@3 was 0.2; one investigator returned no finding, so cross-checking and verification were skipped. The baseline exhausted its request budget after a malformed final response/correction, so the overall comparison is incomplete despite matched request counts. Report: `data/benchmarks/click-3449-quality-gates-v2-20261029.json`.
+- An earlier 11-vs-11 report completed on the same Click case. It ranked `_termui_impl.py` first for the pair and `testing.py` first for the baseline; both recalls were 0.2 and the verifier returned `insufficient_evidence`. This remains one-case evidence, not a general result.
+- The previous v1 `status=complete` meant localization could be scored even when the verifier was unavailable. The v2 contract now separates investigation, citation validation, cross-check, verifier, localization, and human diagnosis review. The UI and export use the same report; human judgments require a short note and remain separate from machine validation.
 - The app currently uses NVIDIA's documented endpoint sampling pair (`temperature=0.95`, `top_p=1.0`) and explicitly requests low reasoning effort. NVIDIA's endpoint reference says the default reasoning effort is high and reasoning shares the output-token budget. The model overview has different general sampling recommendations, so project settings must be tied to the exact endpoint reference rather than mixed across pages.
 
 ## Design
@@ -37,7 +39,7 @@ Represent these dimensions separately:
 
 - **Investigation:** complete or incomplete, including whether both investigators returned.
 - **Citation validation:** not present, present but none valid, partly valid, or all valid; valid means path, source range, quote, and any supplied symbol passed deterministic checks.
-- **Cross-check:** use the explicit states `needs_two_agents`, `incomplete`, `no_verified_citations`, `different_files`, `same_file`, or `overlapping_lines`.
+- **Cross-check:** use the explicit states `not_applicable` (single-agent baseline), `needs_two_agents`, `incomplete`, `no_verified_citations`, `different_files`, `same_file`, or `overlapping_lines`.
 - **Verifier:** reviewed, skipped with reason, unavailable, or not requested. This is optional and must not erase valid investigator output.
 - **Localization evaluation:** scored, incomplete, missing labels, or not scored, with hit@1 and recall@3 clearly labeled as changed-file proxies.
 - **Diagnosis review:** not reviewed, supported, partly supported, unsupported, or incorrect, entered by a human and kept separate from citation validity.
@@ -48,7 +50,7 @@ Represent these dimensions separately:
 ### 2. Make evaluations reproducible and honest
 
 - Keep the request-budget-matched single-investigator comparison. Record latency and request counts for both paths and state that equal request counts do not imply equal tokens, cost, or reasoning quality.
-- Report each curated case separately. Show the number of reviewed cases and avoid presenting a six-case smoke set as a general accuracy claim.
+- Report each curated case separately. Show the number of reviewed cases and avoid presenting a small smoke set as a general accuracy claim.
 - Add human diagnosis adjudication against the issue, pinned source, merged fix, and relevant tests. Record the reason and reviewer separately from machine citation checks.
 - Treat post-cutoff issues as lower-contamination-risk candidates, not proof of training-data exclusion.
 - Use stable, saved run records for all measured claims. Keep cached examples available for a reliable no-call demo, labeled with their original timestamps and model settings.

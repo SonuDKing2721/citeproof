@@ -1,0 +1,14 @@
+{
+  "issue_id": "sysid/sse-starlette#211",
+  "repo": "sysid/sse-starlette",
+  "pre_fix_commit": "6754ef387da97cf6cfbcd1bd5c216b533937b304",
+  "fix_commit": "16179fdc3b47712cd00988ccbdcb531e12562a33",
+  "merged_pr": 212,
+  "fix_url": "https://github.com/sysid/sse-starlette/pull/212",
+  "diagnosis": "The uvicorn fallback in the shutdown watcher copied a server-scoped should_exit flag into process-global AppStatus.should_exit, which was never reset. A later stream then saw the latched global flag and exited. The watcher also held onto a server resolved only once, so it could outlive that server and affect a later one. The fix re-resolves the server on each poll and no longer copies the server flag into the global state.",
+  "primary_files": ["sse_starlette/sse.py"],
+  "supporting_files": ["tests/test_issue211.py"],
+  "changed_files": ["sse_starlette/sse.py", "tests/test_issue211.py", "tests/test_issue132.py", "tests/experimentation/test_multiple_consumers_asyncio.py", "tests/experimentation/test_multiple_consumers_threads.py", "README.md", "ARCHITECTURE.md", "uv.lock"],
+  "label_note": "Curated from issue #211 and merged PR #212. The PR documents two related watcher defects and adds a focused regression test. Never pass this file to the agents.",
+  "evaluation_note": "Opened September 27, 2026, after the model card's stated January 4, 2026 cutoff, but that date alone does not prove exclusion from training or tuning. The issue already names AppStatus.should_exit and explains the shutdown-watcher state leak, so this is a diagnosis-revealing smoke case, not blind-localization evidence."
+}

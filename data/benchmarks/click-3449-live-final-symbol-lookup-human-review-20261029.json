@@ -1,0 +1,156 @@
+{
+  "schema": "citeproof-evaluation/v2",
+  "run_timestamp_utc": "2026-10-28T19:12:47.173573+00:00",
+  "exported_at_utc": "2026-10-29T15:08:26.755861+00:00",
+  "issue_id": "pallets/click#3449",
+  "repository_commit": "a5f5aa6d4012d256ccca24638f2642fc371e9f77",
+  "model_id": "meta/muse-glimmer-30b",
+  "provider": "NVIDIA API Catalog",
+  "status": "complete",
+  "states": {
+    "investigation": "complete",
+    "citation_validation": "all_valid",
+    "cross_check": "overlapping_lines",
+    "verification": "reviewed",
+    "localization": "scored",
+    "diagnosis_review": "partly_supported",
+    "workflow_kind": "cached_demo"
+  },
+  "workflow": {
+    "kind": "cached_demo",
+    "run_timestamp_utc": "2026-10-28T19:12:47.173573+00:00",
+    "timings": {
+      "investigators_seconds": null,
+      "verification_seconds": null,
+      "baseline_seconds": null,
+      "total_seconds": null
+    }
+  },
+  "model_settings": null,
+  "metrics": {
+    "ranked_files": [
+      "src/click/termui.py",
+      "src/click/_termui_impl.py"
+    ],
+    "primary_hit_at_1": false,
+    "gold_file_recall_at_3": 0.2
+  },
+  "evidence": {
+    "agents_with_verified_citations": 2,
+    "cross_check_status": "overlapping_lines",
+    "note": "Each required investigator returned at least one verified citation. This supports source locations, not diagnosis correctness."
+  },
+  "diagnosis_review": {
+    "status": "partly_supported",
+    "reviewer": "Participant",
+    "note": "The investigators found the relevant echo_via_pager/get_pager_file cleanup path and the final flush, but missed the root cause: finalization of a temporary TextIOWrapper closed borrowed stdout. The explanation incorrectly attributes the closure to CliRunner. PR #3482 began the fix; PR #3533 completed it by keeping the borrowed stream open. Correct location and useful mechanism clue, but an incomplete causal diagnosis."
+  },
+  "diagnosis_correctness_metric": "not_scored",
+  "model_requests": {
+    "investigators": 9,
+    "verification": 1,
+    "total": 10
+  },
+  "verification": {
+    "status": "reviewed",
+    "assessment": "supports_candidate",
+    "model_requests": 1,
+    "selected_finding_id": "B-F1",
+    "supporting_evidence_ids": [
+      "B-F1-C1",
+      "B-F1-C2"
+    ],
+    "challenging_evidence_ids": [],
+    "rationale": "The checked source shows echo_via_pager in src/click/termui.py opens a pager via get_pager_file as a context manager and writes to the yielded pager stream, matching the claim that the public helper uses get_pager_file and writes to it. The checked source for get_pager_file in src/click/_termui_impl.py shows it yields a wrapped stream and executes stream.flush() in a finally block after yielding. This flush-on-exit path is the code exercised by the reproducer and is consistent with the reported ValueError arising during CliRunner.invoke teardown when stdout is already closed. Evidence A-F1 and A-F2 describe the same behavior, and B-F1 consolidates both locations.",
+    "test_scenario": "Invoke a command decorated with echo_via_pager using CliRunner and verify the invocation completes without raising ValueError and the output contains the paged text.",
+    "test_assertion": "runner.invoke(cli).exit_code == 0 and 'Hello, Click!' in result.output",
+    "error": null
+  },
+  "evaluation_note": "The original issue report gives a reproducer and stack trace but does not name the implementation file. The final fix was a two-PR sequence; labels include changed files from both PRs. Treat this as a small benchmark case, not evidence of general accuracy.",
+  "metric_note": "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness.",
+  "agents": [
+    {
+      "name": "Investigator A · symptom-first",
+      "error": null,
+      "model_requests": 5,
+      "tool_trace": [
+        "search_text({\"query\": \"echo_via_pager\"})",
+        "read_file({\"path\": \"src/click/termui.py\", \"start_line\": 320, \"end_line\": 400})",
+        "auto-followed local source calls",
+        "read_file({\"path\": \"src/click/_termui_impl.py\", \"start_line\": 1, \"end_line\": 100})"
+      ],
+      "findings": [
+        {
+          "claim": "echo_via_pager uses get_pager_file as a context manager and writes to the yielded pager stream",
+          "explanation": "The public helper opens a pager via get_pager_file in a with block and writes each text chunk to the pager.",
+          "citations": [
+            {
+              "path": "src/click/termui.py",
+              "symbol": "",
+              "start_line": 346,
+              "end_line": 348,
+              "quote": "    with get_pager_file(color=color) as pager:\n        for text in itertools.chain(text_generator, \"\\n\"):\n            pager.write(text)",
+              "valid": true,
+              "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct."
+            }
+          ]
+        },
+        {
+          "claim": "get_pager_file yields a prepared stream and flushes it in a finally block on exit",
+          "explanation": "The context manager yields the stream and then runs stream.flush() in the finally clause, which can be executed after the underlying stdout has been closed by CliRunner.",
+          "citations": [
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "",
+              "start_line": 448,
+              "end_line": 451,
+              "quote": "        try:\n            yield stream\n        finally:\n            stream.flush()",
+              "valid": true,
+              "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Investigator B · structure-first",
+      "error": null,
+      "model_requests": 4,
+      "tool_trace": [
+        "find_symbols({\"query\": \"echo_via_pager\"})",
+        "read_file({\"path\": \"src/click/termui.py\", \"start_line\": 320, \"end_line\": 350})",
+        "auto-followed local source calls",
+        "read_file({\"path\": \"src/click/_termui_impl.py\", \"start_line\": 431, \"end_line\": 460})"
+      ],
+      "findings": [
+        {
+          "claim": "echo_via_pager delegates paging to get_pager_file which yields a wrapped stream and flushes it in a finally block",
+          "explanation": "The public API echo_via_pager is implemented in src/click/termui.py and uses get_pager_file as a context manager to obtain a pager writable stream. get_pager_file is defined in src/click/_termui_impl.py, wraps the underlying stream in MaybeStripAnsi according to its capabilities and flushes the wrapper in a finally clause after yielding. This is the code path exercised by the reproducer and matches the reported traceback pointing to CliRunner.invoke followed by a ValueError on stdout flush.",
+          "citations": [
+            {
+              "path": "src/click/termui.py",
+              "symbol": "echo_via_pager",
+              "start_line": 346,
+              "end_line": 348,
+              "quote": "    with get_pager_file(color=color) as pager:\n        for text in itertools.chain(text_generator, \"\\n\"):\n            pager.write(text)",
+              "valid": true,
+              "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct."
+            },
+            {
+              "path": "src/click/_termui_impl.py",
+              "symbol": "get_pager_file",
+              "start_line": 438,
+              "end_line": 451,
+              "quote": "    with _pager_contextmanager(color=color) as (stream, encoding, color):\n        # Split streams by capabilities rather than the abstract TextIO /\n        # BinaryIO annotations: buffered text streams can be unwrapped to bytes,\n        # while text-only streams are yielded as-is.\n        if _has_binary_buffer(stream):\n            # Text stream backed by a binary buffer.\n            stream = MaybeStripAnsi(stream.buffer, color=color, encoding=encoding)\n        elif isinstance(stream, t.BinaryIO):\n            # Binary stream\n            stream = MaybeStripAnsi(stream, color=color, encoding=encoding)\n        try:\n            yield stream\n        finally:\n            stream.flush()",
+              "valid": true,
+              "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "run_source": "cached_demo_snapshot_rechecked",
+  "original_run_timestamp_utc": "2026-10-28T19:12:47.173573+00:00",
+  "adjudication_source_report": "data/benchmarks/click-3449-live-final-symbol-lookup-20261029.json"
+}

@@ -8,6 +8,7 @@ from pathlib import Path
 IGNORED_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".mypy_cache", ".pytest_cache"}
 MAX_FILES = 5000
 MAX_FILE_BYTES = 256_000
+MAX_TOTAL_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_MATCHES = 30
 
 
@@ -20,8 +21,9 @@ class Repo:
         self.root = Path(root).expanduser().resolve(strict=True)
         if not self.root.is_dir():
             raise RepoError("Repository path must be a folder.")
+        self.commit: str | None = None
         if expected_commit is not None:
-            self._verify_git_state(expected_commit)
+            self.commit = self._verify_git_state(expected_commit)
 
     def _run_git(self, *args: str) -> str:
         try:
@@ -37,7 +39,7 @@ class Repo:
             raise RepoError("Could not verify the curated repository's Git state.") from exc
         return result.stdout.strip()
 
-    def _verify_git_state(self, expected_commit: str) -> None:
+    def _verify_git_state(self, expected_commit: str) -> str:
         head = self._run_git("rev-parse", "HEAD")
         if head != expected_commit:
             raise RepoError(
@@ -46,6 +48,7 @@ class Repo:
         status = self._run_git("status", "--porcelain=v1", "--untracked-files=all")
         if status:
             raise RepoError("This curated issue requires a clean working tree so local edits cannot expose the fix.")
+        return head
 
     def _confined(self, relative_path: str) -> Path:
         candidate = (self.root / relative_path).resolve(strict=True)
@@ -60,21 +63,50 @@ class Repo:
         return candidate
 
     def python_files(self) -> list[Path]:
+        files, _ = self._python_files_with_status()
+        return files
+
+    def _python_files_with_status(self) -> tuple[list[Path], str | None]:
         result: list[Path] = []
+        total_bytes = 0
+        oversized_files = 0
+        partial_reason: str | None = None
         for current, dirs, files in os.walk(self.root, followlinks=False):
             dirs[:] = [d for d in dirs if d not in IGNORED_DIRS and not (Path(current) / d).is_symlink()]
-            for name in files:
+            dirs.sort()
+            for name in sorted(files):
                 if name.endswith(".py"):
                     path = Path(current) / name
                     try:
                         path.resolve(strict=True).relative_to(self.root)
+                        size = path.stat().st_size
                     except (ValueError, OSError):
                         continue
-                    if path.stat().st_size <= MAX_FILE_BYTES:
-                        result.append(path)
-                        if len(result) >= MAX_FILES:
-                            return result
-        return result
+                    if size > MAX_FILE_BYTES:
+                        oversized_files += 1
+                        continue
+                    if len(result) >= MAX_FILES:
+                        partial_reason = f"the {MAX_FILES}-file scan limit was reached"
+                        break
+                    if total_bytes + size > MAX_TOTAL_SOURCE_BYTES:
+                        partial_reason = f"the {MAX_TOTAL_SOURCE_BYTES}-byte total source scan limit was reached"
+                        break
+                    result.append(path)
+                    total_bytes += size
+                if partial_reason:
+                    break
+            if partial_reason:
+                break
+
+        partial_notes = []
+        if partial_reason:
+            partial_notes.append(f"Stopped after {len(result)} files and {total_bytes} bytes because {partial_reason}")
+        if oversized_files:
+            partial_notes.append(f"skipped {oversized_files} Python file(s) larger than {MAX_FILE_BYTES} bytes")
+        note = None
+        if partial_notes:
+            note = "Repository scan incomplete: " + "; ".join(partial_notes) + ". Results may omit relevant code."
+        return result, note
 
     def read_file(self, relative_path: str, start_line: int = 1, end_line: int = 160) -> str:
         if start_line < 1 or end_line < start_line or end_line - start_line > 200:
@@ -90,7 +122,8 @@ class Repo:
             raise RepoError("Search query must contain 1–120 characters.")
         hits: list[str] = []
         needle = query.casefold()
-        for path in self.python_files():
+        files, scan_note = self._python_files_with_status()
+        for path in files:
             try:
                 lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
             except OSError:
@@ -100,15 +133,21 @@ class Repo:
                 if needle in line.casefold():
                     hits.append(f"{rel}:{number}: {line[:300]}")
                     if len(hits) >= MAX_MATCHES:
-                        return "\n".join(hits)
-        return "\n".join(hits) if hits else "No matching Python lines found."
+                        result = "\n".join(hits)
+                        notes = [f"Search result limit ({MAX_MATCHES}) reached; more matches may exist."]
+                        if scan_note:
+                            notes.append(scan_note)
+                        return result + "\n\n" + "\n\n".join(notes)
+        result = "\n".join(hits) if hits else "No matching Python lines found."
+        return result + (f"\n\n{scan_note}" if scan_note else "")
 
     def find_symbols(self, query: str) -> str:
         query = query.strip().casefold()
         if not query or len(query) > 120:
             raise RepoError("Symbol query must contain 1–120 characters.")
         hits: list[str] = []
-        for path in self.python_files():
+        files, scan_note = self._python_files_with_status()
+        for path in files:
             try:
                 source = path.read_text(encoding="utf-8", errors="replace")
                 tree = ast.parse(source)
@@ -134,8 +173,13 @@ class Repo:
                     end_line = getattr(node, "end_lineno", node.lineno)
                     hits.append(f"{rel}:{node.lineno}-{end_line}: {type(node).__name__} {qualified_name}")
                     if len(hits) >= MAX_MATCHES:
-                        return "\n".join(hits)
-        return "\n".join(hits) if hits else "No matching Python symbols found."
+                        result = "\n".join(hits)
+                        notes = [f"Symbol result limit ({MAX_MATCHES}) reached; more matches may exist."]
+                        if scan_note:
+                            notes.append(scan_note)
+                        return result + "\n\n" + "\n\n".join(notes)
+        result = "\n".join(hits) if hits else "No matching Python symbols found."
+        return result + (f"\n\n{scan_note}" if scan_note else "")
 
     def source_lines(self, relative_path: str, start_line: int, end_line: int) -> list[str]:
         path = self._confined(relative_path)

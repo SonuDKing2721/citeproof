@@ -1,0 +1,31 @@
+{
+  "issue_id": "pallets/click#3449",
+  "repo": "pallets/click",
+  "pre_fix_commit": "a5f5aa6d4012d256ccca24638f2642fc371e9f77",
+  "fix_commits": [
+    "5ee8e3123d8ddece6c47eff9a7a7d4ca478c4f37",
+    "4df304c658666f34a5ca4335ab0da15832f02f9e"
+  ],
+  "merged_prs": [3482, 3533],
+  "fix_urls": [
+    "https://github.com/pallets/click/pull/3482",
+    "https://github.com/pallets/click/pull/3533"
+  ],
+  "diagnosis": "The pager fallback wraps borrowed stdout in a TextIOWrapper. When that wrapper is finalized, it closes the stream owned by CliRunner. PR #3482 added an initial borrowed-stream wrapper; PR #3533 completed the fix by keeping the stream open and detaching the temporary wrapper safely.",
+  "primary_files": ["src/click/_termui_impl.py"],
+  "supporting_files": [
+    "src/click/utils.py",
+    "tests/test_termui.py",
+    "tests/test_testing.py",
+    "CHANGES.rst"
+  ],
+  "changed_files": [
+    "CHANGES.rst",
+    "src/click/_termui_impl.py",
+    "src/click/utils.py",
+    "tests/test_termui.py",
+    "tests/test_testing.py"
+  ],
+  "label_note": "Human-curated from both merged pull requests because the first fix was partial. Changed-file labels are proxies, and diagnosis correctness needs separate human review. Never pass this file to the agents.",
+  "evaluation_note": "The original issue report gives a reproducer and stack trace but does not name the implementation file. The final fix was a two-PR sequence; labels include changed files from both PRs. Treat this as a small benchmark case, not evidence of general accuracy."
+}

@@ -1,0 +1,8 @@
+{
+  "issue_id": "pallets/click#2994",
+  "issue_url": "https://github.com/pallets/click/issues/2994",
+  "title": "`launch()` cannot locate files with spaces in the name on Windows",
+  "repo": "pallets/click",
+  "commit": "3c12ce7050bf63c9fa522e5d7b95543037da0f63",
+  "body": "Related to #2868 but with files and `locate=True`.\n\n## Problem\n\nWhen a Windows program uses `click.launch(some_path, locate=True)` and `some_path` contains spaces, then Windows Explorer opens showing the user's Documents folder and not the specified file.\n\nDispatching the call to `powershell` and not `cmd` seems to fix the problem.\n\n## Reproduction\n\n```python\nimport pathlib\nimport subprocess\n\nimport click\n\n# No spaces in this path\nroot_folder = pathlib.Path(\"C:\\\\Users\\\\Public\")\n\n# No spaces in this path\nsucceeding_folder = root_folder / \"click-demo\"\nsucceeding_folder.mkdir(exist_ok=True)\nclick.launch(str(succeeding_folder), locate=True)\n\n# Path has spaces!\nfailing_folder = root_folder / \"click demo\"\nfailing_folder.mkdir(exist_ok=True)\nclick.launch(str(failing_folder), locate=True)\n\n# A PowerShell invocation succeeds\nsubprocess.run(\n    [\n        \"powershell\",\n        \"-Command\",\n        f\"explorer /select,{failing_folder!s}\",\n    ],\n    check=True,\n)\n```\n\nEnvironment: Python 3.11.9, Click 8.2.1, Windows."
+}

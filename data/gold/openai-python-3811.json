@@ -1,0 +1,14 @@
+{
+  "issue_id": "openai/openai-python#3811",
+  "repo": "openai/openai-python",
+  "pre_fix_commit": "ae41bc46cdd53d17e948ac8a73e16bdbf34123a1",
+  "fix_commit": "d7c41efee1b0802b79f3f88a678ef2052b06e9ce",
+  "merged_pr": 3827,
+  "fix_url": "https://github.com/openai/openai-python/pull/3827",
+  "diagnosis": "The stream event iterators passed HTTPX response-read failures through without translating them into the SDK's public exception hierarchy. The fix catches timeout and request exceptions in the sync and async stream paths and raises APITimeoutError or APIConnectionError with the transport error as its cause. The Assistants streaming layer preserves its legacy transport-exception behavior for compatibility. This change does not retry a partially consumed stream.",
+  "primary_files": ["src/openai/_streaming.py"],
+  "supporting_files": ["src/openai/_httpx2.py", "src/openai/lib/streaming/_assistants.py", "tests/test_httpx2.py", "tests/test_streaming.py"],
+  "changed_files": ["src/openai/_streaming.py", "src/openai/_httpx2.py", "src/openai/lib/streaming/_assistants.py", "tests/test_httpx2.py", "tests/test_streaming.py", "README.md"],
+  "label_note": "Curated from issue #3811 and merged PR #3827. The label covers error-type normalization and the Assistants compatibility path; it does not claim that mid-stream retries were implemented. Never pass this file to the agents.",
+  "evaluation_note": "Opened September 7, 2026, after the model card's stated January 4, 2026 cutoff, but later publication does not establish exclusion from training or tuning. The issue names the streaming implementation module, the raw exception types, and the expected SDK exceptions, so this is a diagnosis-revealing smoke case, not blind-localization evidence."
+}

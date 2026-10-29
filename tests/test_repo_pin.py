@@ -40,7 +40,8 @@ class PinnedRepositoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch(
             "subprocess.run", side_effect=self.run_git(PINNED)
         ) as run:
-            Repo(tmp, expected_commit=PINNED)
+            repo = Repo(tmp, expected_commit=PINNED)
+        self.assertEqual(repo.commit, PINNED)
         self.assertEqual(run.call_count, 2)
 
 

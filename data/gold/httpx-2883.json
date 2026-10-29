@@ -1,0 +1,14 @@
+{
+  "issue_id": "encode/httpx#2883",
+  "repo": "encode/httpx",
+  "pre_fix_commit": "3b9060ee1121b48669e0b30045c9344065f4f2ae",
+  "fix_commit": "a11fc3849b94157274c98d99501acad05cbfb221",
+  "merged_pr": 2990,
+  "fix_url": "https://github.com/encode/httpx/pull/2990",
+  "diagnosis": "The URL parser percent-encoded an already escaped component again and encoded forward slashes in query strings. The fix preserves valid %xx escapes, encodes only unsafe raw text, and treats slash as safe in the query component.",
+  "primary_files": ["httpx/_urlparse.py"],
+  "supporting_files": ["tests/models/test_url.py"],
+  "changed_files": ["httpx/_urlparse.py", "tests/models/test_url.py"],
+  "label_note": "Human-curated from issue #2883 and merged PR #2990. The PR also includes a broader URL-escaping cleanup and resolves related reports, so treat changed-file labels as coarse location proxies. Never pass this file to the agents.",
+  "evaluation_note": "The report describes an encoding symptom and gives an example but no implementation path. PR #2990 includes a broader URL-escaping cleanup and tests several URL components, not only this exact query example. This is a historical smoke case: its issue and fix were public in 2023, so contamination risk is elevated and it must not be counted as blind-localization evidence. The model's training cutoff is unknown."
+}

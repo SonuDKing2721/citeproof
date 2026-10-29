@@ -30,7 +30,7 @@
 
 ## Explicit safety behavior
 
-- Do not call Meta Model API from this MVP because the user's RuPay card is unsupported and they have no alternate card.
+- Do not route this MVP through paid Meta Model API usage; keep inference on the free NVIDIA API Catalog endpoint and leave billing disabled.
 - Do not call paid HF inference when the free account allowance is exhausted. Do not configure a fallback model or provider.
 - The NVIDIA endpoint is trial access with account-specific rate limits and may be unavailable; failure must be shown as unavailable, not silently retried against paid inference.
 - NVIDIA trial inputs and outputs may be recorded for product improvement; only public issue and source text are sent.

@@ -1,0 +1,8 @@
+{
+  "issue_id": "pallets/click#3059",
+  "issue_url": "https://github.com/pallets/click/issues/3059",
+  "title": "With `invoke_without_command` set, commands are not marked as optional",
+  "repo": "pallets/click",
+  "commit": "8240d25bdbb8c081b745199620b8f2fe03b10579",
+  "body": "Having\n\n```python\n@click.group(invoke_without_command=True)\ndef main():\n    if ctx.invoked_subcommand is not None:\n        return\n    # do something by default\n```\n\nI expect `--help` to output:\n\n```text\nUsage: app.py [OPTIONS] [COMMAND] [ARGS]...\n```\n\nBut it outputs:\n\n```text\nUsage: app.py [OPTIONS] COMMAND [ARGS]...\n```\n\nEnvironment: Python 3.11.8, Click 8.2.0."
+}

@@ -1,0 +1,166 @@
+{
+  "schema": "citeproof-budget-comparison/v2",
+  "run_timestamp_utc": "2026-10-28T20:13:15.727704+00:00",
+  "issue_id": "pallets/click#3449",
+  "repository_commit": "a5f5aa6d4012d256ccca24638f2642fc371e9f77",
+  "model_id": "meta/muse-glimmer-30b",
+  "provider": "NVIDIA API Catalog",
+  "status": "complete",
+  "budget_matched": true,
+  "timings": {
+    "investigators_seconds": 63.438,
+    "verification_seconds": 0.0,
+    "baseline_seconds": 69.671,
+    "total_seconds": 133.109
+  },
+  "pair": {
+    "model_requests": 10,
+    "localization": {
+      "status": "complete",
+      "ranked_files": [],
+      "primary_hit_at_1": false,
+      "gold_file_recall_at_3": 0.0
+    },
+    "cross_check": "no_verified_citations",
+    "states": {
+      "investigation": "complete",
+      "citation_validation": "not_present",
+      "cross_check": "no_verified_citations",
+      "verification": "skipped",
+      "localization": "scored",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "live_pair"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 8192,
+          "temperature": 0.95,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 1800,
+          "temperature": 0.2,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      }
+    },
+    "verification": {
+      "status": "skipped",
+      "assessment": "not_run",
+      "model_requests": 0,
+      "selected_finding_id": null,
+      "supporting_evidence_ids": [],
+      "challenging_evidence_ids": [],
+      "rationale": "",
+      "test_scenario": null,
+      "test_assertion": null,
+      "error": "Both investigators need at least one source-checked citation before verification."
+    },
+    "agents": [
+      {
+        "name": "Investigator A · symptom-first",
+        "error": null,
+        "model_requests": 5,
+        "tool_trace": [
+          "search_text({\"query\": \"echo_via_pager\"})",
+          "read_file({\"path\": \"src/click/termui.py\", \"start_line\": 320, \"end_line\": 380})",
+          "auto-followed local source calls",
+          "read_file({\"path\": \"src/click/termui.py\", \"start_line\": 380, \"end_line\": 430})"
+        ],
+        "findings": []
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "error": null,
+        "model_requests": 5,
+        "tool_trace": [
+          "find_symbols({\"query\": \"echo_via_pager\"})",
+          "read_file({\"path\": \"src/click/termui.py\", \"start_line\": 320, \"end_line\": 360})",
+          "auto-followed local source calls",
+          "find_symbols({\"query\": \"_pager_contextmanager\"})"
+        ],
+        "findings": []
+      }
+    ]
+  },
+  "baseline": {
+    "model_requests": 10,
+    "localization": {
+      "status": "complete",
+      "ranked_files": [],
+      "primary_hit_at_1": false,
+      "gold_file_recall_at_3": 0.0
+    },
+    "cross_check": "not_applicable",
+    "states": {
+      "investigation": "complete",
+      "citation_validation": "not_present",
+      "cross_check": "not_applicable",
+      "verification": "not_requested",
+      "localization": "scored",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "single_agent_baseline"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 8192,
+          "temperature": 0.95,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 1800,
+          "temperature": 0.2,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      }
+    },
+    "agents": [
+      {
+        "name": "Single investigator · neutral",
+        "error": null,
+        "model_requests": 10,
+        "tool_trace": [
+          "find_symbols({\"query\": \"echo_via_pager\"})",
+          "read_file({\"path\": \"src/click/termui.py\", \"start_line\": 320, \"end_line\": 360})",
+          "auto-followed local source calls",
+          "read_file({\"path\": \"src/click/testing.py\", \"start_line\": 650, \"end_line\": 700})",
+          "auto-followed local source calls",
+          "read_file({\"path\": \"src/click/testing.py\", \"start_line\": 600, \"end_line\": 650})",
+          "auto-followed local source calls",
+          "find_symbols({\"query\": \"isolation\"})",
+          "read_file({\"path\": \"src/click/testing.py\", \"start_line\": 363, \"end_line\": 440})",
+          "auto-followed local source calls",
+          "read_file({\"path\": \"src/click/testing.py\", \"start_line\": 520, \"end_line\": 560})",
+          "read_file({\"path\": \"src/click/_termui_impl.py\", \"start_line\": 431, \"end_line\": 470})",
+          "auto-followed local source calls"
+        ],
+        "findings": []
+      }
+    ]
+  },
+  "diagnosis_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "note": ""
+  },
+  "diagnosis_correctness_metric": "not_scored",
+  "metric_note": "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness. Equal request counts do not imply equal token use or equal reasoning quality."
+}

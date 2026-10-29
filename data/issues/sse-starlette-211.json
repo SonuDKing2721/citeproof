@@ -1,0 +1,8 @@
+{
+  "issue_id": "sysid/sse-starlette#211",
+  "issue_url": "https://github.com/sysid/sse-starlette/issues/211",
+  "title": "`AppStatus.should_exit` latches to True after any uvicorn server stops, so every later EventSourceResponse in the process is cancelled (regression in 3.1.1)",
+  "repo": "sysid/sse-starlette",
+  "commit": "6754ef387da97cf6cfbcd1bd5c216b533937b304",
+  "body": "After one uvicorn server stops, a later EventSourceResponse in the same process is cancelled before its first event. This affects test suites and applications that start more than one server over a process lifetime. The report ties the regression to the 3.1.1 shutdown-watcher change and describes AppStatus.should_exit remaining true."
+}

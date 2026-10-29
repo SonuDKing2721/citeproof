@@ -1,0 +1,8 @@
+{
+  "issue_id": "encode/httpx#2883",
+  "issue_url": "https://github.com/encode/httpx/issues/2883",
+  "title": "ULR parser percent encoding corrupting query params",
+  "repo": "encode/httpx",
+  "commit": "3b9060ee1121b48669e0b30045c9344065f4f2ae",
+  "body": "It appears that the URL parser is corrupting query params by incorrectly percent encoding them.\n\nI noticed a related comment indicating that this percent encoding may not accurately follow the spec.\n\nFor example, a URL with the query parameter `type=application/pdf` is incorrectly encoded as `type=application%2Fpdf`, which causes the server to throw an error. This behavior does not match Requests, which does not corrupt the query parameter.\n\nPossibly related: #2721, #2723, #2856, #2863, #2864."
+}
