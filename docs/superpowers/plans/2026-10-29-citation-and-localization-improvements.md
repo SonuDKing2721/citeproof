@@ -15,8 +15,8 @@
 **Files:**
 - Modify: `citeproof/models.py`
 - Modify: `citeproof/checker.py`
+- Modify: `citeproof/repo.py`
 - Test: `tests/test_checker.py`
-- Read: `citeproof/repo.py` (`Repo._confined` path, file, and size behavior)
 
 - [ ] Add failing tests in `tests/test_checker.py` for every stable outcome: `verified_exact`, `corrected_unique_exact_quote`, `path_missing`, `path_outside_repo`, `path_unreadable`, `invalid_range`, `range_too_wide`, `empty_quote`, `quote_not_found`, `quote_match_ambiguous`, `symbol_not_found`, and `symbol_range_mismatch`.
 - [ ] Add a test where an exact quote appears once far from the claimed range. Assert the status is corrected, original `start_line`/`end_line` remain unchanged, and the corrected fields identify the true source span.
@@ -26,6 +26,7 @@
 - [ ] In `citeproof/checker.py`, map the twelve outcomes directly in code; leave `reason` as explanatory text, never parse it to recover a status. Map a confinement escape to `path_outside_repo`, a missing/non-file target to `path_missing`, and filesystem read errors to `path_unreadable`.
 - [ ] Preserve exact quote, line-width, and AST symbol checks. When the claimed range fails, find exact-string occurrences in the same confined file. Correct only one unique occurrence, at any offset, and accept it only if its complete corrected range passes width and symbol checks. Multiple correction candidates return `quote_match_ambiguous`; zero return `quote_not_found` unless the input is structurally invalid or a symbol-specific outcome applies.
 - [ ] Set `valid` to true only for `verified_exact` and `corrected_unique_exact_quote`. Keep model-claimed `start_line` and `end_line` unchanged; populate corrected fields only after all correction checks pass. Do not introduce fuzzy matching, quote normalization, or minimum-length rules.
+- [ ] Add a machine-readable error category to `RepoError` and set it in `Repo._confined` for outside-root paths, missing/non-file paths, and files rejected by the size limit. Preserve existing exception messages so repository tools remain compatible; map size-limit failures to `path_unreadable` with the existing size reason.
 - [ ] Run `python -m unittest tests.test_checker -v`. Expected after implementation: all checker tests pass, including all twelve outcome and range-provenance assertions.
 - [ ] Run `git diff --check`; commit as `feat: classify citation checks and preserve claimed ranges`.
 
