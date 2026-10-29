@@ -7,6 +7,9 @@ DIAGNOSIS_REVIEW_STATES = {
     "unsupported",
     "incorrect",
 }
+EVALUATION_SCHEMA_V3 = "citeproof-evaluation/v3"
+FINDING_ORDER_RANKING_METHOD = "finding_order_descending_plausibility"
+EVALUATION_SCHEMAS = {"citeproof-evaluation/v1", "citeproof-evaluation/v2", EVALUATION_SCHEMA_V3}
 
 
 @dataclass

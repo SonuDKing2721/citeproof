@@ -199,7 +199,9 @@ class RunReportV2Tests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(report["schema"], "citeproof-evaluation/v2")
+        self.assertEqual(report["schema"], "citeproof-evaluation/v3")
+        self.assertEqual(report["ranking_method"], "finding_order_descending_plausibility")
+        self.assertEqual(len(report["investigator_localization"]), 2)
         self.assertEqual(report["status"], "complete")
         self.assertEqual(report["states"]["verification"], "unavailable")
         self.assertEqual(report["states"]["localization"], "scored")

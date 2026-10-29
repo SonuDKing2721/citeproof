@@ -4,7 +4,16 @@ from datetime import datetime, timezone
 import math
 
 from .checker import check_result
-from .models import AgentResult, Citation, DIAGNOSIS_REVIEW_STATES, Finding, VerificationReview
+from .models import (
+    AgentResult,
+    Citation,
+    DIAGNOSIS_REVIEW_STATES,
+    EVALUATION_SCHEMA_V3,
+    EVALUATION_SCHEMAS,
+    FINDING_ORDER_RANKING_METHOD,
+    Finding,
+    VerificationReview,
+)
 from .repo import Repo
 
 VERIFIED_CITATION_OUTCOMES = frozenset({"verified_exact", "corrected_unique_exact_quote"})
@@ -79,6 +88,9 @@ def make_run_snapshot(
     model_settings: dict | None = None,
     model_request_counts: dict | None = None,
     diagnosis_review: dict | None = None,
+    report_schema: str = EVALUATION_SCHEMA_V3,
+    ranking_method: str | None = FINDING_ORDER_RANKING_METHOD,
+    saved_investigator_localization: list[dict] | None = None,
 ) -> dict:
     """Keep the completed UI run available when Streamlit reruns the script."""
     normalized_timestamp = _safe_timestamp(run_timestamp_utc)
@@ -99,6 +111,9 @@ def make_run_snapshot(
         "model_settings": _safe_model_settings(model_settings),
         "model_request_counts": _safe_request_counts(model_request_counts),
         "diagnosis_review": normalize_diagnosis_review(diagnosis_review),
+        "report_schema": report_schema,
+        "ranking_method": ranking_method,
+        "saved_investigator_localization": saved_investigator_localization,
     }
 
 
@@ -113,8 +128,22 @@ def snapshot_from_saved_report(
     Citation validity stored in the JSON is ignored. Every quote is rechecked
     against the current pinned checkout before it is displayed.
     """
-    if report.get("schema") not in {"citeproof-evaluation/v1", "citeproof-evaluation/v2"}:
+    report_schema = report.get("schema")
+    if not isinstance(report_schema, str) or report_schema not in EVALUATION_SCHEMAS:
         raise ValueError("Saved report has an unsupported schema.")
+    ranking_method = None
+    saved_investigator_localization = None
+    if report_schema == EVALUATION_SCHEMA_V3:
+        ranking_method = report.get("ranking_method")
+        if ranking_method != FINDING_ORDER_RANKING_METHOD:
+            raise ValueError("Saved report has an unsupported ranking method.")
+        from .evaluation import _safe_investigator_localization
+
+        saved_investigator_localization = _safe_investigator_localization(
+            report.get("investigator_localization")
+        )
+        if saved_investigator_localization is None:
+            raise ValueError("Saved report has invalid investigator localization metrics.")
     if report.get("issue_id") != gold_case.get("issue_id"):
         raise ValueError("Saved report belongs to a different issue.")
     if not repo.commit:
@@ -205,6 +234,9 @@ def snapshot_from_saved_report(
         model_settings=_safe_model_settings(report.get("model_settings")),
         model_request_counts=_safe_request_counts(report.get("model_requests")),
         diagnosis_review=report.get("diagnosis_review"),
+        report_schema=report_schema,
+        ranking_method=ranking_method,
+        saved_investigator_localization=saved_investigator_localization,
     )
     for name in ("run_source", "agent_pair_source_timestamp_utc", "verifier_run_timestamp_utc"):
         value = report.get(name)

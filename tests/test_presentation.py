@@ -196,7 +196,13 @@ class CitationPresentationTests(unittest.TestCase):
             run_timestamp_utc=snapshot["run_timestamp_utc"],
             model_settings=snapshot["model_settings"],
             model_request_counts=snapshot["model_request_counts"],
+            report_schema=snapshot["report_schema"],
+            ranking_method=snapshot["ranking_method"],
+            preserved_investigator_localization=snapshot["saved_investigator_localization"],
         )
+        self.assertEqual(restored_report["schema"], "citeproof-evaluation/v1")
+        self.assertNotIn("ranking_method", restored_report)
+        self.assertNotIn("investigator_localization", restored_report)
         self.assertEqual(restored_report["model_requests"], {"investigators": 9, "verification": 1, "total": 10})
         self.assertIsNone(restored_report["agents"][0]["model_requests"])
 
@@ -254,6 +260,8 @@ class CitationPresentationTests(unittest.TestCase):
             )
 
         self.assertEqual(snapshot["workflow_kind"], "cached_pair_live_review")
+        self.assertEqual(snapshot["report_schema"], "citeproof-evaluation/v2")
+        self.assertIsNone(snapshot["ranking_method"])
         self.assertEqual(snapshot["timings"]["total_seconds"], 26.75)
         self.assertEqual([item.model_requests for item in snapshot["results"]], [3, 4])
         self.assertEqual(snapshot["model_request_counts"], {"investigators": 7, "verification": 1, "total": 8})
@@ -290,6 +298,140 @@ class CitationPresentationTests(unittest.TestCase):
             repo.commit = "abc123"
             with self.assertRaisesRegex(ValueError, "different repository commit"):
                 snapshot_from_saved_report(report, {"issue_id": "pallets/click#1"}, "Issue", repo)
+
+    def test_v1_and_v2_exports_keep_their_schema_without_invented_ranking_metrics(self):
+        for schema in ("citeproof-evaluation/v1", "citeproof-evaluation/v2"):
+            with self.subTest(schema=schema), tempfile.TemporaryDirectory() as tmp:
+                repo = Repo(tmp)
+                repo.commit = "abc123"
+                report = {
+                    "schema": schema,
+                    "issue_id": "pallets/click#1",
+                    "repository_commit": "abc123",
+                    "agents": [{"name": "A", "findings": []}, {"name": "B", "findings": []}],
+                }
+                snapshot = snapshot_from_saved_report(report, {"issue_id": "pallets/click#1"}, "Issue", repo)
+                restored = build_run_report(
+                    {"issue_id": "pallets/click#1", "primary_files": ["src/click.py"]},
+                    "abc123",
+                    "model",
+                    "provider",
+                    snapshot["results"],
+                    report_schema=snapshot["report_schema"],
+                    ranking_method=snapshot["ranking_method"],
+                    preserved_investigator_localization=snapshot["saved_investigator_localization"],
+                )
+
+                self.assertEqual(restored["schema"], schema)
+                self.assertNotIn("ranking_method", restored)
+                self.assertNotIn("investigator_localization", restored)
+
+    def test_v3_saved_report_preserves_ranking_and_metrics_but_rechecks_citations(self):
+        ranking = [
+            {
+                "name": "A",
+                "status": "complete",
+                "ranked_files": ["stored-rank.py"],
+                "primary_hit_at_1": False,
+                "primary_file_reciprocal_rank": 0.25,
+                "gold_file_recall_at_3": 0.5,
+            },
+            {
+                "name": "B",
+                "status": "complete",
+                "ranked_files": [],
+                "primary_hit_at_1": False,
+                "primary_file_reciprocal_rank": 0,
+                "gold_file_recall_at_3": 0,
+            },
+        ]
+        report = {
+            "schema": "citeproof-evaluation/v3",
+            "ranking_method": "finding_order_descending_plausibility",
+            "investigator_localization": ranking,
+            "issue_id": "pallets/click#1",
+            "repository_commit": "abc123",
+            "agents": [
+                {
+                    "name": "A",
+                    "findings": [{
+                        "claim": "A claim",
+                        "citations": [{
+                            "path": "sample.py",
+                            "symbol": "",
+                            "start_line": 1,
+                            "end_line": 1,
+                            "claimed_start_line": 1,
+                            "claimed_end_line": 1,
+                            "corrected_start_line": 200,
+                            "corrected_end_line": 200,
+                            "quote": "needle = True",
+                            "valid": False,
+                            "outcome": "path_outside_repo",
+                        }],
+                    }],
+                },
+                {"name": "B", "findings": []},
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "sample.py").write_text("header\nneedle = True\n", encoding="utf-8")
+            repo = Repo(tmp)
+            repo.commit = "abc123"
+            snapshot = snapshot_from_saved_report(report, {"issue_id": "pallets/click#1"}, "Issue", repo)
+
+        checked = snapshot["results"][0].findings[0].citations[0]
+        self.assertTrue(checked.valid)
+        self.assertEqual(checked.outcome, "corrected_unique_exact_quote")
+        self.assertEqual(checked.corrected_start_line, 2)
+        self.assertEqual(snapshot["report_schema"], "citeproof-evaluation/v3")
+        self.assertEqual(snapshot["ranking_method"], "finding_order_descending_plausibility")
+        self.assertEqual(snapshot["saved_investigator_localization"], ranking)
+
+        exported = build_run_report(
+            {"issue_id": "pallets/click#1", "primary_files": ["sample.py"]},
+            "abc123",
+            "model",
+            "provider",
+            snapshot["results"],
+            report_schema=snapshot["report_schema"],
+            ranking_method=snapshot["ranking_method"],
+            preserved_investigator_localization=snapshot["saved_investigator_localization"],
+        )
+        self.assertEqual(exported["ranking_method"], "finding_order_descending_plausibility")
+        self.assertEqual(exported["investigator_localization"], ranking)
+
+    def test_saved_reports_fail_closed_on_malformed_schema_and_v3_metric_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Repo(tmp)
+            repo.commit = "abc123"
+            with self.assertRaisesRegex(ValueError, "unsupported schema"):
+                snapshot_from_saved_report(
+                    {"schema": [], "issue_id": "pallets/click#1", "repository_commit": "abc123"},
+                    {"issue_id": "pallets/click#1"},
+                    "Issue",
+                    repo,
+                )
+            malformed_v3 = {
+                "schema": "citeproof-evaluation/v3",
+                "ranking_method": "finding_order_descending_plausibility",
+                "investigator_localization": [{
+                    "name": "A",
+                    "status": [],
+                    "ranked_files": [],
+                    "primary_hit_at_1": None,
+                    "primary_file_reciprocal_rank": None,
+                    "gold_file_recall_at_3": None,
+                }],
+            }
+            with self.assertRaisesRegex(ValueError, "invalid investigator localization"):
+                snapshot_from_saved_report(
+                    malformed_v3,
+                    {"issue_id": "pallets/click#1"},
+                    "Issue",
+                    repo,
+                )
 
 
 if __name__ == "__main__":

@@ -234,6 +234,9 @@ def render_run(run: dict) -> None:
             diagnosis_review_status=normalized_review["status"],
             diagnosis_review_reviewer=normalized_review["reviewer"],
             diagnosis_review_note=normalized_review["note"],
+            report_schema=run.get("report_schema", "citeproof-evaluation/v3"),
+            ranking_method=run.get("ranking_method") or "finding_order_descending_plausibility",
+            preserved_investigator_localization=run.get("saved_investigator_localization"),
         )
         metrics = report["metrics"]
         run_states = report["states"]
@@ -279,7 +282,10 @@ def render_run(run: dict) -> None:
         else:
             st.warning("This run is incomplete, so no localization score is reported.")
         st.subheader("Per-investigator file-localization proxies")
-        for investigator_metrics in report["investigator_localization"]:
+        investigator_rows = report.get("investigator_localization")
+        if investigator_rows is None:
+            st.caption("Per-investigator rankings were not recorded in this legacy report.")
+        for investigator_metrics in investigator_rows or []:
             ranked = ", ".join(investigator_metrics["ranked_files"]) or "No verified files ranked"
             st.caption(f"{investigator_metrics['name']} · ranked unique checked files: {ranked}")
 

@@ -14,7 +14,14 @@ from .model_config import (
     MODEL_REQUEST_TIMEOUT_SECONDS,
     VERIFIER_REQUEST_SETTINGS,
 )
-from .models import AgentResult, DIAGNOSIS_REVIEW_STATES, Finding, VerificationReview
+from .models import (
+    AgentResult,
+    DIAGNOSIS_REVIEW_STATES,
+    EVALUATION_SCHEMA_V3,
+    FINDING_ORDER_RANKING_METHOD,
+    Finding,
+    VerificationReview,
+)
 
 from .presentation import finding_citation_summary
 
@@ -242,6 +249,61 @@ def _safe_timings(timings: dict[str, Any] | None) -> dict[str, float | None]:
     return normalized
 
 
+def _safe_investigator_localization(value: object) -> list[dict[str, Any]] | None:
+    if not isinstance(value, list) or len(value) > 4:
+        return None
+    normalized: list[dict[str, Any]] = []
+    allowed_statuses = {"complete", "incomplete", "missing_gold_labels"}
+    for raw in value:
+        if not isinstance(raw, dict):
+            return None
+        name = raw.get("name")
+        status = raw.get("status")
+        files = raw.get("ranked_files")
+        if (
+            not isinstance(name, str)
+            or not name
+            or len(name) > 120
+            or not isinstance(status, str)
+            or status not in allowed_statuses
+            or not isinstance(files, list)
+            or len(files) > 500
+            or any(not isinstance(path, str) or len(path) > 300 for path in files)
+        ):
+            return None
+
+        hit = raw.get("primary_hit_at_1")
+        if hit is not None and not isinstance(hit, bool):
+            return None
+        values: dict[str, float | None] = {}
+        for key in ("primary_file_reciprocal_rank", "gold_file_recall_at_3"):
+            metric = raw.get(key)
+            if metric is None:
+                values[key] = None
+            elif (
+                isinstance(metric, bool)
+                or not isinstance(metric, (int, float))
+                or not math.isfinite(metric)
+                or not 0 <= metric <= 1
+            ):
+                return None
+            else:
+                values[key] = float(metric)
+        if status != "complete":
+            if hit is not None or any(metric is not None for metric in values.values()):
+                return None
+        elif hit is None or any(metric is None for metric in values.values()):
+            return None
+        normalized.append({
+            "name": name,
+            "status": status,
+            "ranked_files": list(files),
+            "primary_hit_at_1": hit,
+            **values,
+        })
+    return normalized
+
+
 def _safe_request_counts(value: object) -> dict[str, int] | None:
     if not isinstance(value, dict):
         return None
@@ -276,8 +338,23 @@ def build_run_report(
     diagnosis_review_status: str = "not_reviewed",
     diagnosis_review_reviewer: str | None = None,
     diagnosis_review_note: str | None = None,
+    report_schema: str = EVALUATION_SCHEMA_V3,
+    ranking_method: str | None = FINDING_ORDER_RANKING_METHOD,
+    preserved_investigator_localization: object = None,
 ) -> dict[str, Any]:
     """Build a shareable one-run report without copying hidden file labels."""
+    if (
+        not isinstance(report_schema, str)
+        or report_schema not in {"citeproof-evaluation/v1", "citeproof-evaluation/v2", EVALUATION_SCHEMA_V3}
+    ):
+        raise ValueError("Unknown evaluation report schema.")
+    if report_schema == EVALUATION_SCHEMA_V3 and ranking_method != FINDING_ORDER_RANKING_METHOD:
+        raise ValueError("Unknown investigator ranking method.")
+    preserved_metrics = None
+    if report_schema == EVALUATION_SCHEMA_V3 and preserved_investigator_localization is not None:
+        preserved_metrics = _safe_investigator_localization(preserved_investigator_localization)
+        if preserved_metrics is None:
+            raise ValueError("Saved investigator localization metrics are invalid.")
     metrics = score_localization(results, gold_case, minimum_agents=minimum_agents)
     evidence_comparison = compare_evidence(results)
     agents_with_verified_citations = sum(
@@ -357,8 +434,8 @@ def build_run_report(
     cross_check_status = (
         "not_applicable" if workflow_kind == "single_agent_baseline" else evidence_comparison.status
     )
-    return {
-        "schema": "citeproof-evaluation/v2",
+    report = {
+        "schema": report_schema,
         "run_timestamp_utc": timestamp,
         "exported_at_utc": datetime.now(timezone.utc).isoformat(),
         "issue_id": gold_case.get("issue_id", "unknown"),
@@ -378,20 +455,6 @@ def build_run_report(
             "primary_hit_at_1": metrics.primary_hit_at_1,
             "gold_file_recall_at_3": metrics.gold_file_recall_at_3,
         },
-        "investigator_localization": [
-            {
-                "name": investigator.agent_name,
-                "status": investigator.status,
-                "ranked_files": list(investigator.ranked_files),
-                "primary_hit_at_1": investigator.primary_hit_at_1,
-                "primary_file_reciprocal_rank": investigator.primary_file_reciprocal_rank,
-                "gold_file_recall_at_3": investigator.gold_file_recall_at_3,
-            }
-            for investigator in (
-                score_investigator_localization(result, gold_case)
-                for result in results
-            )
-        ],
         "finding_summary": _finding_summary(results, minimum_agents),
         "evidence": {
             "agents_with_verified_citations": agents_with_verified_citations,
@@ -404,8 +467,10 @@ def build_run_report(
         "verification": verification_report_payload(verification),
         "evaluation_note": gold_case.get("evaluation_note", ""),
         "metric_note": (
-            "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. "
-            "These metrics do not score diagnosis correctness."
+            "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness."
+            if report_schema != EVALUATION_SCHEMA_V3
+            else "File-localization proxy metrics use human-curated file labels from the merged fix. "
+            "Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness."
         ),
         "agents": [
             {
@@ -444,6 +509,27 @@ def build_run_report(
             for result in results
         ],
     }
+    if report_schema == EVALUATION_SCHEMA_V3:
+        report["ranking_method"] = ranking_method
+        report["investigator_localization"] = (
+            preserved_metrics
+            if preserved_metrics is not None
+            else [
+                {
+                    "name": investigator.agent_name,
+                    "status": investigator.status,
+                    "ranked_files": list(investigator.ranked_files),
+                    "primary_hit_at_1": investigator.primary_hit_at_1,
+                    "primary_file_reciprocal_rank": investigator.primary_file_reciprocal_rank,
+                    "gold_file_recall_at_3": investigator.gold_file_recall_at_3,
+                }
+                for investigator in (
+                    score_investigator_localization(result, gold_case)
+                    for result in results
+                )
+            ]
+        )
+    return report
 
 
 def verification_report_payload(verification: VerificationReview | None) -> dict[str, Any]:
