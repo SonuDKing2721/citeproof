@@ -51,7 +51,7 @@ The participant guide states a **three-minute video** is required and the submis
 
 **GitHub repository metadata (checked November 1):** The public repository has the description “Evidence-first Python issue investigation with independent Muse Glimmer agents and checked source citations,” topics `ai-agents`, `code-analysis`, `developer-tools`, `hackathon`, `meta-ai`, `python`, and `streamlit`, and the MIT license with `Shravan Kumar` attribution. The source and submission-prep improvements described in this plan are published on GitHub `main`.
 
-Track selection is intentionally left to the participant: choose Indie Developer if entering as an individual/student, or Startup if entering as a qualifying startup team. The participant guide says to submit one project per team/startup.
+**Selected track:** Indie Developer (solo entrant), as confirmed by the participant. The participant guide describes this track for individual builders and students.
 
 ## Draft organizer question (not sent)
 
@@ -62,7 +62,7 @@ Track selection is intentionally left to the participant: choose Indie Developer
 - Two **partly supported** review exports now cover the cached and live Click #3449 runs. They are annotations of the same issue, not independent cases or an aggregate diagnosis-accuracy result.
 - The project code now has an MIT license. Third-party dependencies, issue material, benchmark records, and assets keep their own terms.
 - Copyright attribution is confirmed: `Shravan Kumar`.
-- Track selection and final submission fields: require the participant's choice and account access.
+- Track selection is resolved: Indie Developer (solo entrant). Final submission fields still require portal account access.
 - Free route: BlockRun is currently the only newly found exact-model candidate that advertises keyless, no-wallet use; its minimal request timed out. Routeway may offer a different upstream, but its signup/payment-method requirements, actual free quota, upstream identity, and data policy remain unverified. No new account was created and no payment was made. Do not spend money or enable top-ups.
 - Event bonus: do not claim it for the current NVIDIA route or the Requesty gateway. Fireworks is a listed partner, but its model catalog lists Glimmer as on-demand only and bills GPU-seconds. The accepted rules and this participant's credit availability still need confirmation. Do not enable paid billing.
 - Accepted rules check: as of November 1, both official event pages still say selected participants must accept Official Rules, but neither exposes the accepted rule text. The linked event waiver page returns only “Sign In” and “Loading…” in an anonymous read. A user-provided accepted copy or organizer response is still needed to confirm the exact bonus route.
