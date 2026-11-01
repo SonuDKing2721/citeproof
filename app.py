@@ -35,7 +35,7 @@ THEME_CSS = (PROJECT_DIR / "assets" / "citeproof.css").read_text(encoding="utf-8
 st.markdown(f"<style>{THEME_CSS}</style>", unsafe_allow_html=True)
 CURATED_CASES = load_curated_cases(PROJECT_DIR)
 PROVIDER = "NVIDIA API Catalog"
-SAVED_CLICK_3449_REPORT = PROJECT_DIR / "data" / "demo_runs" / "citeproof-pallets-click-3449-complete.json"
+SAVED_CLICK_3449_REPORT = PROJECT_DIR / "data" / "benchmarks" / "click-3449-cached-demo-rechecked-v3-human-review-20261101.json"
 SAVED_CLICK_3449_VERIFIER_REPORT = PROJECT_DIR / "data" / "benchmarks" / "click-3449-live-verifier-on-cached-pair-20261029.json"
 
 
