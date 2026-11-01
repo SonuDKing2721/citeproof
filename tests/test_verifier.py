@@ -38,6 +38,21 @@ class VerifierCandidateTests(unittest.TestCase):
         self.assertEqual([item["evidence_id"] for item in evidence], ["A-F1-C1"])
         self.assertNotIn("return right", repr(evidence))
 
+    def test_candidate_evidence_uses_corrected_source_range(self):
+        checked = citation("src/a.py", "return left")
+        checked.outcome = "corrected_unique_exact_quote"
+        checked.corrected_start_line = 40
+        checked.corrected_end_line = 41
+        results = [
+            AgentResult("Investigator A", [Finding("A claim", "A explanation", [checked])], []),
+            AgentResult("Investigator B", [Finding("B claim", "B explanation", [citation("src/b.py", "return right")])], []),
+        ]
+
+        _, evidence = build_candidates(results)
+
+        self.assertEqual(evidence[0]["start_line"], 40)
+        self.assertEqual(evidence[0]["end_line"], 41)
+
     def test_accepts_only_allowlisted_candidate_and_evidence_ids(self):
         candidates, evidence = build_candidates(pair_results())
         payload = '{"assessment":"supports_candidate","selected_finding_id":"A-F1","supporting_evidence_ids":["A-F1-C1"],"challenging_evidence_ids":["B-F1-C1"],"rationale":"The checked lines match the claim.","regression_test":{"scenario":"Pass the reported value through the public entry point.","assertion":"Assert the output preserves the value."}}'

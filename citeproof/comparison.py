@@ -31,12 +31,12 @@ def compare_evidence(results: list[AgentResult]) -> EvidenceComparison:
 
     evidence: list[set[tuple[str, int, int]]] = []
     for result in results[:2]:
-        citations = {
-            (citation.path, citation.start_line, citation.end_line)
-            for finding in result.findings
-            for citation in finding.citations
-            if citation.valid
-        }
+        citations = set()
+        for finding in result.findings:
+            for citation in finding.citations:
+                if citation.valid:
+                    start_line, end_line = citation.effective_range
+                    citations.add((citation.path, start_line, end_line))
         evidence.append(citations)
 
     if not evidence[0] or not evidence[1]:

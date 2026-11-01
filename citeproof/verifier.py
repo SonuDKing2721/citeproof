@@ -35,12 +35,13 @@ def build_candidates(results: list[AgentResult]) -> tuple[list[dict[str, Any]], 
             for citation_index, citation in enumerate(checked_citations[:4], start=1):
                 evidence_id = f"{finding_id}-C{citation_index}"
                 evidence_ids.append(evidence_id)
+                start_line, end_line = citation.effective_range
                 evidence.append({
                     "evidence_id": evidence_id,
                     "finding_id": finding_id,
                     "path": citation.path,
-                    "start_line": citation.start_line,
-                    "end_line": citation.end_line,
+                    "start_line": start_line,
+                    "end_line": end_line,
                     "symbol": citation.symbol,
                     "quote": citation.quote[:2000],
                 })
