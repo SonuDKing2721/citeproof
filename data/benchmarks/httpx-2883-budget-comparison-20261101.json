@@ -1,0 +1,329 @@
+{
+  "schema": "citeproof-budget-comparison/v2",
+  "run_timestamp_utc": "2026-11-01T08:23:49.597219+00:00",
+  "issue_id": "encode/httpx#2883",
+  "repository_commit": "3b9060ee1121b48669e0b30045c9344065f4f2ae",
+  "model_id": "meta/muse-glimmer-30b",
+  "provider": "NVIDIA API Catalog",
+  "status": "complete",
+  "budget_matched": true,
+  "timings": {
+    "investigators_seconds": 60.703,
+    "verification_seconds": 27.047,
+    "baseline_seconds": 135.281,
+    "total_seconds": 223.031
+  },
+  "pair": {
+    "model_requests": 10,
+    "localization": {
+      "status": "complete",
+      "ranked_files": [
+        "httpx/_urlparse.py"
+      ],
+      "primary_hit_at_1": true,
+      "gold_file_recall_at_3": 0.5
+    },
+    "finding_summary": {
+      "status": "verified_citations_present",
+      "finding_count": 2,
+      "agents_with_findings": 2,
+      "verified_citation_count": 2,
+      "required_agents": 2
+    },
+    "cross_check": "same_file",
+    "states": {
+      "investigation": "complete",
+      "citation_validation": "partly_verified",
+      "cross_check": "same_file",
+      "verification": "reviewed",
+      "localization": "scored",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "live_pair"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 8192,
+          "temperature": 0.95,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 1800,
+          "temperature": 0.2,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      }
+    },
+    "verification": {
+      "status": "reviewed",
+      "assessment": "supports_candidate",
+      "model_requests": 1,
+      "selected_finding_id": "A-F1",
+      "supporting_evidence_ids": [
+        "A-F1-C1"
+      ],
+      "challenging_evidence_ids": [
+        "B-F1-C1"
+      ],
+      "rationale": "The issue describes the URL parser corrupting query parameters by percent-encoding '/' as %2F, e.g. `type=application/pdf` → `type=application%2Fpdf`. Evidence A-F1-C1 shows the parser normalises the query component with `quote(query, safe=SUB_DELIMS + \":?[]@\")` and an explicit comment that '/' is excluded from the safe set because it is intentionally replaced with percent-encoding for robustness. This directly matches the reported behaviour of the parser encoding slashes in query strings. Evidence B-F1-C1 concerns the `urlencode` helper which quotes keys/values with `safe=\"\"`; it relates to building query strings rather than parsing an incoming URL query component, and therefore does not directly support the parser-corruption claim described in the issue.",
+      "test_scenario": "Parse a URL containing a query parameter with a slash, e.g. https://example.com/path?type=application/pdf, and inspect the parsed query component.",
+      "test_assertion": "The parsed query string contains 'type=application/pdf' and does not contain 'type=application%2Fpdf'.",
+      "error": null
+    },
+    "agents": [
+      {
+        "name": "Investigator A · symptom-first",
+        "error": null,
+        "model_requests": 4,
+        "tool_trace": [
+          "search_text({\"query\": \"percent\"})",
+          "search_text({\"query\": \"URL parser\"})",
+          "search_text({\"query\": \"application%2Fpdf\"})",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 1, \"end_line\": 100})",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 240, \"end_line\": 280})",
+          "auto-followed local calls: quote (httpx/_urlparse.py); encode_host (httpx/_urlparse.py); normalize_port (httpx/_urlparse.py); validate_path (httpx/_urlparse.py)"
+        ],
+        "findings": [
+          {
+            "claim": "URL query component is percent-encoded with '/' not in the safe set, causing '/' to be encoded to %2F",
+            "explanation": "The URL parser normalizes the query string with `quote(query, safe=SUB_DELIMS + \":?[]@\")`. The safe set does not include '/', so a slash in a query value such as `type=application/pdf` is percent-encoded. The surrounding comment notes the intentional exclusion of '/' for robustness.",
+            "citation_summary": "all_verified",
+            "citations": [
+              {
+                "path": "httpx/_urlparse.py",
+                "symbol": "",
+                "start_line": 263,
+                "end_line": 267,
+                "claimed_start_line": 263,
+                "claimed_end_line": 267,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    # We also exclude '/' because it is more robust to replace it with a percent\n    # encoding despite it not being a requirement of the spec.\n    parsed_query: typing.Optional[str] = (\n        None if query is None else quote(query, safe=SUB_DELIMS + \":?[]@\")",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "error": null,
+        "model_requests": 5,
+        "tool_trace": [
+          "find_symbols({\"query\": \"URL parser\"})",
+          "find_symbols({\"query\": \"percent\"})",
+          "find_symbols({\"query\": \"query\"})",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 400, \"end_line\": 440})",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 439, \"end_line\": 500})",
+          "auto-followed local calls: is_safe (httpx/_urlparse.py); percent_encode (httpx/_urlparse.py); quote (httpx/_urlparse.py)",
+          "Citation correction added no verified source evidence"
+        ],
+        "findings": [
+          {
+            "claim": "Query parameters are percent-encoded with '/' turned into %2F by the custom urlencode implementation",
+            "explanation": "The httpx URL utilities deliberately encode '/' in query strings. The `urlencode` helper builds query strings by quoting both keys and values with `safe=\"\"`, so characters like '/' are not allowed to remain unescaped. The docstring explicitly notes this diverging behaviour from requests, linking to the related issues about percent-encoding.",
+            "citation_summary": "partly_verified",
+            "citations": [
+              {
+                "path": "httpx/_urlparse.py",
+                "symbol": "urlencode",
+                "start_line": 459,
+                "end_line": 461,
+                "claimed_start_line": 459,
+                "claimed_end_line": 461,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    Note that we use '%20' encoding for spaces. and '%2F  for '/'.\\n    This is slightly different than `requests`, but is the behaviour that browsers use.",
+                "valid": false,
+                "reason": "Quoted text does not occur in this file.",
+                "outcome": "quote_not_found"
+              },
+              {
+                "path": "httpx/_urlparse.py",
+                "symbol": "urlencode",
+                "start_line": 467,
+                "end_line": 467,
+                "claimed_start_line": 467,
+                "claimed_end_line": 467,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    return \"&\".join([quote(k, safe=\"\") + \"=\" + quote(v, safe=\"\") for k, v in items])",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "investigator_localization": [
+      {
+        "name": "Investigator A · symptom-first",
+        "status": "complete",
+        "ranked_files": [
+          "httpx/_urlparse.py"
+        ],
+        "primary_hit_at_1": true,
+        "primary_file_reciprocal_rank": 1.0,
+        "gold_file_recall_at_3": 0.5
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "status": "complete",
+        "ranked_files": [
+          "httpx/_urlparse.py"
+        ],
+        "primary_hit_at_1": true,
+        "primary_file_reciprocal_rank": 1.0,
+        "gold_file_recall_at_3": 0.5
+      }
+    ]
+  },
+  "baseline": {
+    "model_requests": 10,
+    "localization": {
+      "status": "complete",
+      "ranked_files": [
+        "httpx/_urlparse.py"
+      ],
+      "primary_hit_at_1": true,
+      "gold_file_recall_at_3": 0.5
+    },
+    "finding_summary": {
+      "status": "verified_citations_present",
+      "finding_count": 2,
+      "agents_with_findings": 1,
+      "verified_citation_count": 1,
+      "required_agents": 1
+    },
+    "cross_check": "not_applicable",
+    "states": {
+      "investigation": "complete",
+      "citation_validation": "partly_verified",
+      "cross_check": "not_applicable",
+      "verification": "not_requested",
+      "localization": "scored",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "single_agent_baseline"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 8192,
+          "temperature": 0.95,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 1800,
+          "temperature": 0.2,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      }
+    },
+    "agents": [
+      {
+        "name": "Single investigator · neutral",
+        "error": null,
+        "model_requests": 10,
+        "tool_trace": [
+          "find_symbols({\"query\": \"URL\"})",
+          "read_file({\"path\": \"httpx/_urls.py\", \"start_line\": 1, \"end_line\": 100})",
+          "read_file({\"path\": \"httpx/_urls.py\", \"start_line\": 100, \"end_line\": 250})",
+          "auto-followed local calls: QueryParams (httpx/_urls.py)",
+          "read_file({\"path\": \"httpx/_urls.py\", \"start_line\": 250, \"end_line\": 350})",
+          "auto-followed local calls: QueryParams (httpx/_urls.py)",
+          "read_file({\"path\": \"httpx/_urls.py\", \"start_line\": 350, \"end_line\": 420})",
+          "auto-followed local calls: URL (httpx/_urls.py)",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 1, \"end_line\": 100})",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 100, \"end_line\": 250})",
+          "auto-followed local calls: quote (httpx/_urlparse.py); encode_host (httpx/_urlparse.py); normalize_port (httpx/_urlparse.py); urlparse (httpx/_urlparse.py)",
+          "read_file({\"path\": \"httpx/_urlparse.py\", \"start_line\": 250, \"end_line\": 350})",
+          "auto-followed local calls: validate_path (httpx/_urlparse.py); quote (httpx/_urlparse.py); ParseResult (httpx/_urlparse.py); normalize_path (httpx/_urlparse.py)",
+          "Citation correction added no verified source evidence"
+        ],
+        "findings": [
+          {
+            "claim": "The URL parser percent-encodes '/' in query strings, turning values like 'application/pdf' into 'application%2Fpdf'.",
+            "explanation": "In httpx/_urlparse.py the parsed query component is built with quote(query, safe=SUB_DELIMS + \":?[]@\"). The safe set does not include '/', and the code comments that '/' is deliberately excluded for robustness, so '/' is percent-encoded in the query. This matches the reported corruption of query parameters.",
+            "citation_summary": "none_verified",
+            "citations": [
+              {
+                "path": "httpx/_urlparse.py",
+                "symbol": "",
+                "start_line": 263,
+                "end_line": 267,
+                "claimed_start_line": 263,
+                "claimed_end_line": 267,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "# For 'query' we need to drop '#' from the GEN_DELIMS set.\n# We also exclude '/' because it is more robust to replace it with a percent\n# encoding despite it not being a requirement of the spec.\nparsed_query: typing.Optional[str] = (\n    None if query is None else quote(query, safe=SUB_DELIMS + \":?[]@\")\n)",
+                "valid": false,
+                "reason": "Quoted text does not occur in this file.",
+                "outcome": "quote_not_found"
+              }
+            ]
+          },
+          {
+            "claim": "The quote helper percent-encodes any character not in UNRESERVED_CHARACTERS plus the safe set.",
+            "explanation": "The quote function returns the input unchanged only if is_safe; otherwise each character is kept only if it is in NON_ESCAPED_CHARS = UNRESERVED_CHARACTERS + safe, otherwise it is percent-encoded. This is the mechanism that enforces the safe set for the query.",
+            "citation_summary": "all_verified",
+            "citations": [
+              {
+                "path": "httpx/_urlparse.py",
+                "symbol": "",
+                "start_line": 439,
+                "end_line": 449,
+                "claimed_start_line": 439,
+                "claimed_end_line": 449,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "def quote(string: str, safe: str = \"/\") -> str:\n    \"\"\"\n    Use percent-encoding to quote a string if required.\n    \"\"\"\n    if is_safe(string, safe=safe):\n        return string\n\n    NON_ESCAPED_CHARS = UNRESERVED_CHARACTERS + safe\n    return \"\".join(\n        [char if char in NON_ESCAPED_CHARS else percent_encode(char) for char in string]\n    )",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "investigator_localization": [
+      {
+        "name": "Single investigator · neutral",
+        "status": "complete",
+        "ranked_files": [
+          "httpx/_urlparse.py"
+        ],
+        "primary_hit_at_1": true,
+        "primary_file_reciprocal_rank": 1.0,
+        "gold_file_recall_at_3": 0.5
+      }
+    ]
+  },
+  "diagnosis_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "note": ""
+  },
+  "diagnosis_correctness_metric": "not_scored",
+  "metric_note": "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness. Equal request counts do not imply equal token use or equal reasoning quality."
+}

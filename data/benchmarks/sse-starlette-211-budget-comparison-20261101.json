@@ -1,0 +1,333 @@
+{
+  "schema": "citeproof-budget-comparison/v2",
+  "run_timestamp_utc": "2026-11-01T08:30:21.288121+00:00",
+  "issue_id": "sysid/sse-starlette#211",
+  "repository_commit": "6754ef387da97cf6cfbcd1bd5c216b533937b304",
+  "model_id": "meta/muse-glimmer-30b",
+  "provider": "NVIDIA API Catalog",
+  "status": "incomplete",
+  "budget_matched": false,
+  "timings": {
+    "investigators_seconds": 85.375,
+    "verification_seconds": 29.031,
+    "baseline_seconds": 240.016,
+    "total_seconds": 354.422
+  },
+  "pair": {
+    "model_requests": 10,
+    "localization": {
+      "status": "complete",
+      "ranked_files": [
+        "sse_starlette/sse.py"
+      ],
+      "primary_hit_at_1": true,
+      "gold_file_recall_at_3": 0.5
+    },
+    "finding_summary": {
+      "status": "verified_citations_present",
+      "finding_count": 3,
+      "agents_with_findings": 2,
+      "verified_citation_count": 7,
+      "required_agents": 2
+    },
+    "cross_check": "overlapping_lines",
+    "states": {
+      "investigation": "complete",
+      "citation_validation": "all_verified",
+      "cross_check": "overlapping_lines",
+      "verification": "reviewed",
+      "localization": "scored",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "live_pair"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 8192,
+          "temperature": 0.95,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 1800,
+          "temperature": 0.2,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      }
+    },
+    "verification": {
+      "status": "reviewed",
+      "assessment": "supports_candidate",
+      "model_requests": 1,
+      "selected_finding_id": "A-F1",
+      "supporting_evidence_ids": [
+        "A-F1-C1",
+        "A-F1-C2",
+        "A-F1-C3"
+      ],
+      "challenging_evidence_ids": [],
+      "rationale": "The checked source shows AppStatus defines a class-level flag `should_exit = False` (A-F1-C1, B-F1-C1). The shutdown watcher synchronises state by assigning `AppStatus.should_exit = True  # Sync state for consistency` (A-F1-C2) and the monkey-patched `AppStatus.handle_exit` also sets `AppStatus.should_exit = True` when automatic graceful drain is enabled (A-F1-C3, B-F1-C2). No reset of the class attribute is present in the evidence. The early-return path in `_listen_for_exit_signal` returns immediately when `AppStatus.should_exit` is True (B-F2-C1) and the watcher loop breaks on the flag (B-F2-C2), matching the claim that once a uvicorn server stops the flag latches True and later EventSourceResponse instances are cancelled. This aligns with finding A-F1.",
+      "test_scenario": "Start a uvicorn server, trigger a graceful shutdown so AppStatus.should_exit becomes True, then start a second server in the same process and create a new EventSourceResponse stream.",
+      "test_assertion": "The second stream does not return immediately from _listen_for_exit_signal and is not cancelled before emitting its first event; AppStatus.should_exit is reset for the new server lifetime.",
+      "error": null
+    },
+    "agents": [
+      {
+        "name": "Investigator A · symptom-first",
+        "error": null,
+        "model_requests": 4,
+        "tool_trace": [
+          "search_text({\"query\": \"should_exit\"})",
+          "read_file({\"path\": \"sse_starlette/sse.py\", \"start_line\": 1, \"end_line\": 250})",
+          "auto-followed local calls: _get_shutdown_state (sse_starlette/sse.py); _get_uvicorn_server (sse_starlette/sse.py); _ShutdownState (sse_starlette/sse.py); _shutdown_watcher (sse_starlette/sse.py)",
+          "read_file({\"path\": \"sse_starlette/sse.py\", \"start_line\": 180, \"end_line\": 230})"
+        ],
+        "findings": [
+          {
+            "claim": "AppStatus.should_exit is set to True on uvicorn shutdown and never reset, causing later EventSourceResponse instances to see a latched shutdown flag",
+            "explanation": "The `_shutdown_watcher` coroutine breaks and broadcasts when shutdown is detected. When the uvicorn Server.should_exit flag is observed it synchronises state by setting `AppStatus.should_exit = True` and then breaks, but the class attribute is never cleared for the next server lifetime. The monkey-patch `AppStatus.handle_exit` also sets `AppStatus.should_exit = True`. Because the flag is a module-level class attribute, once a server stops the flag remains True for all subsequent streams in the same process, leading to immediate cancellation. Tests explicitly reset the flag between runs, indicating the latching problem.",
+            "citation_summary": "all_verified",
+            "citations": [
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "AppStatus",
+                "start_line": 184,
+                "end_line": 185,
+                "claimed_start_line": 184,
+                "claimed_end_line": 185,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    should_exit = False",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              },
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "",
+                "start_line": 133,
+                "end_line": 135,
+                "claimed_start_line": 133,
+                "claimed_end_line": 135,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    AppStatus.should_exit = True  # Sync state for consistency",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              },
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "AppStatus.handle_exit",
+                "start_line": 212,
+                "end_line": 214,
+                "claimed_start_line": 212,
+                "claimed_end_line": 214,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    def handle_exit(*args, **kwargs):\n        if AppStatus.enable_automatic_graceful_drain:\n            AppStatus.should_exit = True",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "error": null,
+        "model_requests": 5,
+        "tool_trace": [
+          "find_symbols({\"query\": \"AppStatus\"})",
+          "find_symbols({\"query\": \"should_exit\"})",
+          "find_symbols({\"query\": \"EventSourceResponse\"})",
+          "read_file({\"path\": \"sse_starlette/sse.py\", \"start_line\": 181, \"end_line\": 230})",
+          "read_file({\"path\": \"sse_starlette/sse.py\", \"start_line\": 405, \"end_line\": 445})",
+          "auto-followed local calls: _ensure_watcher_started_on_this_loop (sse_starlette/sse.py); _get_shutdown_state (sse_starlette/sse.py); _shutdown_watcher (sse_starlette/sse.py); _ShutdownState (sse_starlette/sse.py); _get_uvicorn_server (sse_starlette/sse.py)"
+        ],
+        "findings": [
+          {
+            "claim": "AppStatus.should_exit is a class-level flag that is set to True on shutdown and never reset, so it stays True for the lifetime of the process",
+            "explanation": "AppStatus defines should_exit as a class attribute False and handle_exit sets it to True when automatic graceful drain is enabled. No code resets the flag, so after one shutdown it remains True for later EventSourceResponse instances.",
+            "citation_summary": "all_verified",
+            "citations": [
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "",
+                "start_line": 181,
+                "end_line": 185,
+                "claimed_start_line": 181,
+                "claimed_end_line": 185,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "class AppStatus:\n    \"\"\"Helper to capture a shutdown signal from Uvicorn so we can gracefully terminate SSE streams.\"\"\"\n\n    should_exit = False",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              },
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "",
+                "start_line": 212,
+                "end_line": 215,
+                "claimed_start_line": 212,
+                "claimed_end_line": 215,
+                "corrected_start_line": 211,
+                "corrected_end_line": 214,
+                "quote": "    @staticmethod\n    def handle_exit(*args, **kwargs):\n        if AppStatus.enable_automatic_graceful_drain:\n            AppStatus.should_exit = True",
+                "valid": true,
+                "reason": "Unique exact quote; corrected line range from 212-215 to 211-214. File, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "corrected_unique_exact_quote"
+              }
+            ]
+          },
+          {
+            "claim": "_listen_for_exit_signal returns immediately when AppStatus.should_exit is True, causing later streams to be cancelled",
+            "explanation": "EventSourceResponse._listen_for_exit_signal checks AppStatus.should_exit at entry and returns without waiting, and the shutdown watcher breaks as soon as the flag is True. Because the flag is never cleared, subsequent responses start with the early-return path.",
+            "citation_summary": "all_verified",
+            "citations": [
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "",
+                "start_line": 405,
+                "end_line": 409,
+                "claimed_start_line": 405,
+                "claimed_end_line": 409,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "    async def _listen_for_exit_signal() -> None:\n        \"\"\"Wait for shutdown signal via the shared watcher.\"\"\"\n        if AppStatus.should_exit:\n            return",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              },
+              {
+                "path": "sse_starlette/sse.py",
+                "symbol": "",
+                "start_line": 124,
+                "end_line": 127,
+                "claimed_start_line": 124,
+                "claimed_end_line": 127,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "        while True:\n            # Check our flag (monkey-patch worked or manually set)\n            if AppStatus.should_exit:\n                break",
+                "valid": true,
+                "reason": "File, line range, quote, and symbol verified. This does not prove the diagnosis is correct.",
+                "outcome": "verified_exact"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "investigator_localization": [
+      {
+        "name": "Investigator A · symptom-first",
+        "status": "complete",
+        "ranked_files": [
+          "sse_starlette/sse.py"
+        ],
+        "primary_hit_at_1": true,
+        "primary_file_reciprocal_rank": 1.0,
+        "gold_file_recall_at_3": 0.5
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "status": "complete",
+        "ranked_files": [
+          "sse_starlette/sse.py"
+        ],
+        "primary_hit_at_1": true,
+        "primary_file_reciprocal_rank": 1.0,
+        "gold_file_recall_at_3": 0.5
+      }
+    ]
+  },
+  "baseline": {
+    "model_requests": 5,
+    "localization": {
+      "status": "incomplete",
+      "ranked_files": [],
+      "primary_hit_at_1": null,
+      "gold_file_recall_at_3": null
+    },
+    "finding_summary": {
+      "status": "incomplete",
+      "finding_count": 0,
+      "agents_with_findings": 0,
+      "verified_citation_count": 0,
+      "required_agents": 1
+    },
+    "cross_check": "not_applicable",
+    "states": {
+      "investigation": "incomplete",
+      "citation_validation": "no_citations",
+      "cross_check": "not_applicable",
+      "verification": "not_requested",
+      "localization": "incomplete",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "single_agent_baseline"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 8192,
+          "temperature": 0.95,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "meta/muse-glimmer-30b",
+        "request_parameters": {
+          "max_tokens": 1800,
+          "temperature": 0.2,
+          "top_p": 1.0,
+          "reasoning_effort": "low"
+        },
+        "timeout_seconds": 120.0
+      }
+    },
+    "agents": [
+      {
+        "name": "Single investigator · neutral",
+        "error": "Muse timed out before returning a result. Check NVIDIA trial access, rate limits, and connectivity; this investigator is incomplete.",
+        "model_requests": 5,
+        "tool_trace": [
+          "find_symbols({\"query\": \"AppStatus\"})",
+          "read_file({\"path\": \"sse_starlette/sse.py\", \"start_line\": 170, \"end_line\": 230})",
+          "search_text({\"query\": \"should_exit\"})",
+          "read_file({\"path\": \"sse_starlette/sse.py\", \"start_line\": 95, \"end_line\": 145})",
+          "auto-followed local calls: _get_shutdown_state (sse_starlette/sse.py); _get_uvicorn_server (sse_starlette/sse.py); _ShutdownState (sse_starlette/sse.py)"
+        ],
+        "findings": []
+      }
+    ],
+    "investigator_localization": [
+      {
+        "name": "Single investigator · neutral",
+        "status": "incomplete",
+        "ranked_files": [],
+        "primary_hit_at_1": null,
+        "primary_file_reciprocal_rank": null,
+        "gold_file_recall_at_3": null
+      }
+    ]
+  },
+  "diagnosis_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "note": ""
+  },
+  "diagnosis_correctness_metric": "not_scored",
+  "metric_note": "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness. Equal request counts do not imply equal token use or equal reasoning quality."
+}
