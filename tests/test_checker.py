@@ -200,6 +200,13 @@ class CitationOutcomeTests(unittest.TestCase):
         outside.write_text("needle = True\n", encoding="utf-8")
         self.assert_outcome(self.citation(path="../outside.py"), "path_outside_repo", False)
 
+    def test_missing_outside_root_path_is_still_classified_as_outside(self):
+        self.assert_outcome(
+            self.citation(path="../missing-outside.py"),
+            "path_outside_repo",
+            False,
+        )
+
     def test_oversized_file_has_path_unreadable_outcome(self):
         (self.root / "large.py").write_bytes(b"x" * (MAX_FILE_BYTES + 1))
         self.assert_outcome(

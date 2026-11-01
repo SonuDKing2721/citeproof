@@ -54,9 +54,7 @@ class Repo:
 
     def _confined(self, relative_path: str) -> Path:
         try:
-            candidate = (self.root / relative_path).resolve(strict=True)
-        except FileNotFoundError as exc:
-            raise RepoError(str(exc), code="path_missing") from exc
+            candidate = (self.root / relative_path).resolve(strict=False)
         except OSError as exc:
             raise RepoError(str(exc), code="path_unreadable") from exc
         try:
