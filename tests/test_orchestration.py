@@ -9,6 +9,25 @@ from citeproof.repo import Repo
 
 
 class PairOrchestrationTests(unittest.TestCase):
+    def test_same_deterministic_preseed_is_passed_to_both_investigators(self):
+        captured = []
+        issue = 'ValueError: stream is already closed'
+
+        def investigator(repo, issue, agent_name, strategy, **kwargs):
+            captured.append((agent_name, kwargs.get("preseed")))
+            return AgentResult(agent_name, [], [])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "reader.py").write_text(
+                "def read():\n    raise ValueError('stream is already closed')\n",
+                encoding="utf-8",
+            )
+            investigate_pair(Repo(Path(tmp)), issue, investigator=investigator)
+
+        self.assertEqual(len(captured), 2)
+        self.assertEqual(captured[0][1], captured[1][1])
+        self.assertIn("Error text hit: reader.py:2", captured[0][1])
+
     def test_structure_first_is_seeded_with_api_from_issue_reproducer(self):
         captured = []
         issue = '''```python
@@ -62,6 +81,29 @@ CliRunner().invoke(cli)
 
         self.assertTrue(progress_threads)
         self.assertTrue(all(thread_id == caller_thread for thread_id in progress_threads))
+
+    def test_sequential_mode_completes_one_investigator_before_starting_the_next(self):
+        events = []
+
+        def investigator(repo, issue, agent_name, strategy, on_progress=None, max_completions=None, **kwargs):
+            events.append(("start", agent_name, max_completions))
+            if on_progress:
+                on_progress("request running")
+            events.append(("end", agent_name, max_completions))
+            return AgentResult(agent_name, [], [])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            result = investigate_pair(
+                Repo(Path(tmp)), "public issue", investigator=investigator,
+                on_progress=lambda label, message: events.append(("progress", label, message)),
+                parallel=False,
+                max_completions=3,
+            )
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual([event[0] for event in events if event[0] in {"start", "end"}], ["start", "end", "start", "end"])
+        self.assertTrue(all(event[2] == 3 for event in events if event[0] in {"start", "end"}))
+        self.assertEqual(len([event for event in events if event[0] == "progress"]), 2)
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ _EXCEPTION = re.compile(
     re.MULTILINE,
 )
 _CODE_BLOCK = re.compile(r"```(?P<language>[^\r\n`]*)\r?\n(?P<body>.*?)```", re.DOTALL)
+_SAFE_PYTHON_BASENAME = re.compile(r"[A-Za-z0-9_.-]{1,120}\.py\Z", re.IGNORECASE)
 
 
 def _call_name(node: ast.AST) -> str | None:
@@ -34,7 +35,7 @@ def _dotted_name(node: ast.AST) -> str | None:
     return None
 
 
-def _is_test_harness_module(module: str) -> bool:
+def is_test_harness_module(module: str) -> bool:
     markers = {"test", "tests", "testing", "runner", "pytest", "unittest", "mock"}
     parts = [part.casefold() for part in module.split(".") if part]
     return any(
@@ -138,7 +139,7 @@ def extract_reproducer_api_hints(issue: str, *, max_symbols: int = 3) -> list[st
                     if not module and receiver_name in instance_modules:
                         module = instance_modules[receiver_name]
                 symbol = call.func.attr
-            if not module or _is_test_harness_module(module):
+            if not module or is_test_harness_module(module):
                 continue
             if not symbol:
                 symbol = call.func.id if isinstance(call.func, ast.Name) else ""
@@ -183,3 +184,39 @@ def extract_diagnostic_hints(issue: str, *, max_frames: int = 3) -> list[str]:
         if path and line_number > 0:
             hints.append(f"Traceback frame: {path}:{line_number} in {function}")
     return hints
+
+
+def extract_repository_clues(issue: str, *, max_clues: int = 3) -> list[tuple[str, str]]:
+    """Extract short error phrases and safe Python basenames for local search."""
+    if max_clues <= 0:
+        return []
+
+    clues: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, value: str) -> None:
+        normalized = " ".join(value.split())[:120]
+        key = (kind, normalized.casefold())
+        if normalized and key not in seen and len(clues) < max_clues:
+            clues.append((kind, normalized))
+            seen.add(key)
+
+    bounded_issue = issue[:12000]
+    for match in reversed(list(_EXCEPTION.finditer(bounded_issue))):
+        message = " ".join(match.group("message").split())
+        if len(message) >= 8:
+            add("error", message)
+        if len(clues) >= max_clues:
+            return clues
+
+    for match in reversed(list(_FRAME.finditer(bounded_issue))):
+        raw_path = match.group("path").replace("\\", "/")
+        basename = raw_path.rsplit("/", 1)[-1]
+        module_path = ".".join(raw_path.removesuffix(".py").split("/"))
+        if is_test_harness_module(module_path):
+            continue
+        if _SAFE_PYTHON_BASENAME.fullmatch(basename):
+            add("filename", basename)
+        if len(clues) >= max_clues:
+            break
+    return clues

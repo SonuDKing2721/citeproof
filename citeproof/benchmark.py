@@ -8,7 +8,13 @@ from pathlib import Path
 import sys
 import time
 
-from .agent import MAX_FINAL_RESPONSE_RETRIES, MODEL_ID, ModelRequestBudget, investigate
+from .agent import (
+    MAX_COMPLETIONS_PER_AGENT,
+    MAX_FINAL_RESPONSE_RETRIES,
+    MODEL_ID,
+    ModelRequestBudget,
+    investigate,
+)
 from .evaluation import (
     LocalizationMetrics,
     build_comparison_report,
@@ -39,6 +45,7 @@ BASELINE_STRATEGY = (
     "Investigate the issue independently. Use the repository tools to locate the relevant public API, "
     "follow its implementation into helpers, and cite only source evidence you inspected. State uncertainty."
 )
+_DEFAULT_VERIFIER = object()
 
 
 def _progress_callback(
@@ -56,6 +63,10 @@ def run_budget_matched_comparison(
     gold_case: dict,
     on_progress: Callable[[str], None] | None = None,
     investigator: Callable[..., AgentResult] = investigate,
+    *,
+    verifier: Callable[..., VerificationReview] | None | object = _DEFAULT_VERIFIER,
+    parallel_pair: bool = True,
+    pair_max_completions: int = MAX_COMPLETIONS_PER_AGENT,
 ) -> BudgetMatchedComparison:
     """Run two investigators, then one control with the same request count.
 
@@ -64,29 +75,44 @@ def run_budget_matched_comparison(
     baseline is skipped so the run does not spend more calls on a bad control.
     """
     total_started = time.monotonic()
+    selected_verifier = verify_findings if verifier is _DEFAULT_VERIFIER else verifier
+    preseed = repo.preseed_issue(issue)
     investigators_started = total_started
     pair = investigate_pair(
         repo,
         issue,
         on_progress=(lambda label, message: on_progress(f"{label}: {message}")) if on_progress else None,
         investigator=investigator,
+        parallel=parallel_pair,
+        max_completions=pair_max_completions,
+        preseed=preseed,
     )
     investigators_ended = time.monotonic()
     verification_started = time.monotonic()
-    verification = verify_findings(
-        issue,
-        list(pair),
-        on_progress=_progress_callback(on_progress, "Bounded evidence verifier"),
+    verification = (
+        selected_verifier(
+            issue,
+            list(pair),
+            on_progress=_progress_callback(on_progress, "Bounded evidence verifier"),
+        )
+        if selected_verifier is not None
+        else None
     )
     verification_ended = time.monotonic()
     stage_timings = {
         "investigators_seconds": round(max(0.0, investigators_ended - investigators_started), 3),
-        "verification_seconds": round(max(0.0, verification_ended - verification_started), 3),
+        "verification_seconds": (
+            round(max(0.0, verification_ended - verification_started), 3)
+            if selected_verifier is not None
+            else 0.0
+        ),
         "baseline_seconds": None,
         "total_seconds": None,
     }
     investigator_request_count = sum(max(0, int(result.model_requests)) for result in pair)
-    pair_request_count = investigator_request_count + max(0, int(verification.model_requests))
+    pair_request_count = investigator_request_count + (
+        max(0, int(verification.model_requests)) if verification is not None else 0
+    )
     pair_metrics = score_localization(list(pair), gold_case)
     if any(result.error for result in pair) or pair_request_count == 0:
         stage_timings["total_seconds"] = round(max(0.0, time.monotonic() - total_started), 3)
@@ -104,7 +130,7 @@ def run_budget_matched_comparison(
         )
 
     baseline_budget = ModelRequestBudget(limit=pair_request_count)
-    baseline_completion_budget = max(1, pair_request_count - MAX_FINAL_RESPONSE_RETRIES)
+    baseline_completion_budget = max(2, pair_request_count - MAX_FINAL_RESPONSE_RETRIES)
     baseline_started = time.monotonic()
     baseline_result = investigator(
         repo,
@@ -115,6 +141,7 @@ def run_budget_matched_comparison(
         on_progress=_progress_callback(on_progress, "Single investigator baseline"),
         max_completions=baseline_completion_budget,
         request_budget=baseline_budget,
+        preseed=preseed,
     )
     baseline_ended = time.monotonic()
     stage_timings["baseline_seconds"] = round(max(0.0, baseline_ended - baseline_started), 3)
@@ -152,6 +179,13 @@ def run_benchmark_cli(
     output_path: str | Path,
     on_progress: Callable[[str], None] | None = None,
     investigator: Callable[..., AgentResult] = investigate,
+    *,
+    model_id: str = MODEL_ID,
+    provider: str = "NVIDIA API Catalog",
+    verifier: Callable[..., VerificationReview] | None = verify_findings,
+    parallel_pair: bool = True,
+    pair_max_completions: int = 4,
+    model_settings: dict | None = None,
 ) -> tuple[int, dict]:
     """Load separate issue/gold files, verify the pin, and save a report."""
     issue_data = json.loads(Path(issue_path).read_text(encoding="utf-8"))
@@ -181,14 +215,18 @@ def run_benchmark_cli(
         gold_case,
         on_progress=on_progress,
         investigator=investigator,
+        verifier=verifier,
+        parallel_pair=parallel_pair,
+        pair_max_completions=pair_max_completions,
     )
     report = build_comparison_report(
         gold_case,
         repo.commit or pinned_commit,
-        MODEL_ID,
-        "NVIDIA API Catalog",
+        model_id,
+        provider,
         comparison,
         verification=comparison.verification,
+        model_settings=model_settings,
     )
     _, content = export_run_report(report)
     destination = Path(output_path)

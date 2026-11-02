@@ -1,4 +1,4 @@
-"""Bounded NVIDIA API Catalog client for Muse Glimmer."""
+"""Bounded model-backed investigator for Muse and compatible local profiles."""
 
 import ast
 import json
@@ -10,24 +10,34 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 
-from openai import APITimeoutError, OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 from .diagnostics import extract_diagnostic_hints, extract_reproducer_api_hints
 from .models import AgentResult, Citation, Finding
 from .model_config import (
     AGENT_TIME_BUDGET_SECONDS,
+    InferenceProfile,
     INVESTIGATOR_REQUEST_SETTINGS,
     MODEL_ID,
     MODEL_REQUEST_TIMEOUT_SECONDS,
 )
 from .repo import Repo
 from .checker import check_result
+from .trace import make_trace_event
 
 MAX_COMPLETIONS_PER_AGENT = 4
 MAX_FINAL_RESPONSE_RETRIES = 1
 MAX_AUTO_FOLLOW_DEPTH = 2
 MAX_AUTO_FOLLOW_SNIPPETS = 5
 MAX_AUTO_FOLLOW_CHARS = 4300
+TRANSIENT_RETRY_DELAYS_SECONDS = (5, 15, 30)
 
 
 class ModelRequestBudgetExceeded(RuntimeError):
@@ -42,12 +52,63 @@ class ModelTimeBudgetExceeded(RuntimeError):
 class ModelRequestBudget:
     limit: int
     used: int = 0
+    retries: int = 0
 
-    def request(self, client: Any, payload: dict[str, Any]) -> Any:
-        if self.used >= self.limit:
-            raise ModelRequestBudgetExceeded("Model request budget exhausted.")
-        self.used += 1
-        return client.chat.completions.create(**payload)
+    def request(
+        self,
+        client: Any,
+        payload: dict[str, Any],
+        *,
+        deadline: float | None = None,
+        on_retry: Callable[[int, int, Exception], None] | None = None,
+        sleeper: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> Any:
+        retry_index = 0
+        while True:
+            if self.used >= self.limit:
+                raise ModelRequestBudgetExceeded("Model request budget exhausted.")
+            request_payload = dict(payload)
+            if deadline is not None:
+                remaining = deadline - clock()
+                if remaining <= 0:
+                    raise ModelTimeBudgetExceeded("The investigator reached its 4-minute time budget.")
+                configured_timeout = request_payload.get("timeout")
+                if (
+                    isinstance(configured_timeout, (int, float))
+                    and not isinstance(configured_timeout, bool)
+                    and configured_timeout > 0
+                ):
+                    request_payload["timeout"] = min(float(configured_timeout), remaining)
+            self.used += 1
+            try:
+                return client.chat.completions.create(**request_payload)
+            except Exception as exc:
+                if not _is_retryable_provider_error(exc) or retry_index >= len(TRANSIENT_RETRY_DELAYS_SECONDS):
+                    raise
+                delay = TRANSIENT_RETRY_DELAYS_SECONDS[retry_index]
+                if self.used >= self.limit:
+                    message = (
+                        "Model request timed out; the request budget was exhausted before retry."
+                        if isinstance(exc, APITimeoutError)
+                        else f"Model request budget exhausted before retry after {type(exc).__name__}."
+                    )
+                    raise ModelRequestBudgetExceeded(message) from exc
+                if deadline is not None and deadline - clock() <= delay:
+                    raise ModelTimeBudgetExceeded("The investigator reached its 4-minute time budget.") from exc
+                self.retries += 1
+                if on_retry:
+                    on_retry(retry_index + 1, delay, exc)
+                sleeper(delay)
+                if deadline is not None and clock() >= deadline:
+                    raise ModelTimeBudgetExceeded("The investigator reached its 4-minute time budget.") from exc
+                retry_index += 1
+
+
+def _is_retryable_provider_error(error: Exception) -> bool:
+    if isinstance(error, (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)):
+        return True
+    return isinstance(error, APIStatusError) and 500 <= error.status_code < 600
 
 TOOLS = [
     {
@@ -348,7 +409,7 @@ def _retry_final_synthesis(
     response = send_request({**request, "messages": retry_messages})
     message = response.choices[0].message
     if getattr(message, "tool_calls", None):
-        return None, "Muse requested another tool after its investigation budget; no result was accepted."
+        return None, "The model requested another tool after its investigation budget; no result was accepted."
     return message, None
 
 
@@ -362,6 +423,8 @@ def investigate(
     on_progress: Callable[[str], None] | None = None,
     max_completions: int = MAX_COMPLETIONS_PER_AGENT,
     request_budget: ModelRequestBudget | None = None,
+    preseed: str = "",
+    inference_profile: InferenceProfile | None = None,
 ) -> AgentResult:
     allowed_tools = {item["function"]["name"] for item in TOOLS}
     if first_tool is not None and first_tool not in allowed_tools:
@@ -377,19 +440,40 @@ def investigate(
         limit=max_completions + MAX_FINAL_RESPONSE_RETRIES,
     )
     initial_request_count = request_budget.used
+    initial_retry_count = request_budget.retries
 
     def request_count() -> int:
         return request_budget.used - initial_request_count
 
-    token = os.getenv("NVIDIA_API_KEY", "").strip()
-    if not token:
-        return AgentResult(agent_name, [], [], "Set NVIDIA_API_KEY to a free NVIDIA API Catalog key for Muse Glimmer.")
+    def retry_count() -> int:
+        return request_budget.retries - initial_retry_count
 
-    deadline = time.monotonic() + AGENT_TIME_BUDGET_SECONDS
+    if inference_profile is None:
+        token = os.getenv("NVIDIA_API_KEY", "").strip()
+        base_url = "https://integrate.api.nvidia.com/v1"
+        model_id = MODEL_ID
+        request_settings = INVESTIGATOR_REQUEST_SETTINGS
+        timeout_seconds = MODEL_REQUEST_TIMEOUT_SECONDS
+        time_budget_seconds = AGENT_TIME_BUDGET_SECONDS
+        supports_forced_tool_choice = True
+        missing_key_error = "Set NVIDIA_API_KEY to a free NVIDIA API Catalog key for Muse Glimmer."
+    else:
+        token = inference_profile.api_key.strip()
+        base_url = inference_profile.base_url
+        model_id = inference_profile.model_id
+        request_settings = inference_profile.request_settings
+        timeout_seconds = inference_profile.timeout_seconds
+        time_budget_seconds = inference_profile.time_budget_seconds
+        supports_forced_tool_choice = inference_profile.supports_forced_tool_choice
+        missing_key_error = "The selected model profile has no API credential configured."
+    if not token:
+        return AgentResult(agent_name, [], [], missing_key_error)
+
+    deadline = time.monotonic() + time_budget_seconds
     client = OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
+        base_url=base_url,
         api_key=token,
-        timeout=MODEL_REQUEST_TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
         max_retries=0,
     )
 
@@ -401,7 +485,16 @@ def investigate(
         try:
             response = request_budget.request(
                 client,
-                {**payload, "timeout": min(MODEL_REQUEST_TIMEOUT_SECONDS, remaining)},
+                {**payload, "timeout": min(timeout_seconds, remaining)},
+                deadline=deadline,
+                on_retry=(
+                    lambda retry_number, delay, error: on_progress(
+                        f"Transient provider error {type(error).__name__}; retry {retry_number}/3 "
+                        f"in {delay}s (attempt {request_budget.used}/{request_budget.limit})."
+                    )
+                    if on_progress
+                    else None
+                ),
             )
         except Exception:
             if on_progress:
@@ -450,17 +543,33 @@ def investigate(
             "(untrusted search hints; verify in this repository):\n"
             + ", ".join(reproducer_hints)
         )
+    if preseed:
+        user_content += (
+            "\n\nDeterministic repository pre-seed "
+            "(untrusted source hints; verify with the read-only repository tools):\n"
+            "<repository_clues>\n"
+            + preseed[:3000]
+            + "\n</repository_clues>"
+        )
+    if inference_profile is not None:
+        user_content += (
+            "\n\nMandatory evidence gate for this local-model evaluation: do not answer from memory. "
+            "Use the offered repository tools and successfully call read_file on this checkout before returning any finding. "
+            "If the tool call is not available or source cannot be read, return an incomplete result rather than guessed citations."
+        )
     messages = [
         {"role": "system", "content": system_prompt + "\nInvestigation strategy: " + strategy},
         {"role": "user", "content": user_content},
     ]
     trace: list[str] = []
+    trace_events: list[dict[str, str]] = []
+    source_read_completed = False
     try:
         for call_index in range(max_completions):
             request = {
-                "model": MODEL_ID,
+                "model": model_id,
                 "messages": messages,
-                **INVESTIGATOR_REQUEST_SETTINGS,
+                **request_settings,
             }
             if call_index == max_completions - 1:
                 messages.append({
@@ -473,16 +582,18 @@ def investigate(
                     request["tools"] = [
                         tool for tool in TOOLS if tool["function"]["name"] == first_tool
                     ]
-                    request["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": first_tool},
-                    }
+                    if supports_forced_tool_choice:
+                        request["tool_choice"] = {
+                            "type": "function",
+                            "function": {"name": first_tool},
+                        }
                 elif call_index == 1:
                     request["tools"] = [tool for tool in TOOLS if tool["function"]["name"] == "read_file"]
-                    request["tool_choice"] = {
-                        "type": "function",
-                        "function": {"name": "read_file"},
-                    }
+                    if supports_forced_tool_choice:
+                        request["tool_choice"] = {
+                            "type": "function",
+                            "function": {"name": "read_file"},
+                        }
                 elif call_index == max_completions - 2:
                     request["tools"] = [
                         tool for tool in TOOLS
@@ -497,6 +608,31 @@ def investigate(
             calls = getattr(message, "tool_calls", None) or []
             if not calls:
                 content = getattr(message, "content", None) or ""
+                if inference_profile is not None and not source_read_completed:
+                    if call_index < max_completions - 2:
+                        messages.append({"role": "assistant", "content": str(content)[:4000]})
+                        messages.append({
+                            "role": "user",
+                            "content": (
+                                "You have not read repository source. Do not answer from memory. "
+                                "Call the offered read_file tool now, then base any finding on those checked lines."
+                            ),
+                        })
+                        if on_progress:
+                            on_progress("Local model answered before reading source; requesting the required source read.")
+                        continue
+                    error = "The local model returned without successfully reading repository source; this result is incomplete."
+                    if on_progress:
+                        on_progress("Local model did not pass the repository-source evidence gate.")
+                    return AgentResult(
+                        agent_name,
+                        [],
+                        trace,
+                        error,
+                        request_count(),
+                        model_retries=retry_count(),
+                        trace_events=trace_events,
+                    )
                 retry_used = False
                 try:
                     findings = _content_to_findings(content)
@@ -514,18 +650,18 @@ def investigate(
                         if error:
                             if on_progress:
                                 on_progress("Format correction tried to call another tool; result rejected.")
-                            return AgentResult(agent_name, [], trace, error, request_count())
+                            return AgentResult(agent_name, [], trace, error, request_count(), model_retries=retry_count(), trace_events=trace_events)
                         try:
                             findings = _content_to_findings(getattr(retry_message, "content", None) or "")
                         except ValueError:
-                            error = "Muse returned a response that did not match Citeproof's required JSON format after one correction request."
+                            error = "The model returned a response that did not match Citeproof's required JSON format after one correction request."
                             if on_progress:
                                 on_progress("Format correction still was not valid Citeproof JSON.")
-                            return AgentResult(agent_name, [], trace, error, request_count())
+                            return AgentResult(agent_name, [], trace, error, request_count(), model_retries=retry_count(), trace_events=trace_events)
                         retry_used = True
                     else:
-                        error = "Muse returned a response that did not match Citeproof's required JSON format."
-                        return AgentResult(agent_name, [], trace, error, request_count())
+                        error = "The model returned a response that did not match Citeproof's required JSON format."
+                        return AgentResult(agent_name, [], trace, error, request_count(), model_retries=retry_count(), trace_events=trace_events)
                 if not retry_used and not findings and any(item.startswith("read_file(") for item in trace):
                     if on_progress:
                         on_progress("No findings returned; retrying the final synthesis once with the checked source context.")
@@ -542,18 +678,25 @@ def investigate(
                     if error:
                         if on_progress:
                             on_progress("Final synthesis tried to call another tool; result rejected.")
-                        return AgentResult(agent_name, [], trace, error, request_count())
+                        return AgentResult(agent_name, [], trace, error, request_count(), model_retries=retry_count(), trace_events=trace_events)
                     try:
                         findings = _content_to_findings(getattr(retry_message, "content", None) or "")
                     except ValueError:
-                        error = "Muse returned a response that did not match Citeproof's required JSON format after one correction request."
+                        error = "The model returned a response that did not match Citeproof's required JSON format after one correction request."
                         if on_progress:
                             on_progress("Model response was not valid Citeproof JSON.")
-                        return AgentResult(agent_name, [], trace, error, request_count())
+                        return AgentResult(agent_name, [], trace, error, request_count(), model_retries=retry_count(), trace_events=trace_events)
                     if on_progress:
                         on_progress("Final response rechecked against source evidence.")
                     retry_used = True
-                result = AgentResult(agent_name, findings, trace, model_requests=request_count())
+                result = AgentResult(
+                    agent_name,
+                    findings,
+                    trace,
+                    model_requests=request_count(),
+                    model_retries=retry_count(),
+                    trace_events=trace_events,
+                )
                 result = check_result(repo, result)
                 repair_instruction = _citation_repair_instruction(result)
                 if (
@@ -595,7 +738,14 @@ def investigate(
                         else:
                             corrected_result = check_result(
                                 repo,
-                                AgentResult(agent_name, corrected_findings, list(trace), model_requests=request_count()),
+                                AgentResult(
+                                    agent_name,
+                                    corrected_findings,
+                                    list(trace),
+                                    model_requests=request_count(),
+                                    model_retries=retry_count(),
+                                    trace_events=trace_events,
+                                ),
                             )
                             if _citation_quality(corrected_result) > _citation_quality(result):
                                 result = corrected_result
@@ -607,15 +757,16 @@ def investigate(
                                     on_progress("Citation correction added no verified evidence; keeping the original result.")
                 result.trace = trace
                 result.model_requests = request_count()
+                result.model_retries = retry_count()
                 if on_progress:
                     on_progress("Final evidence checked.")
                 return result
             if call_index == max_completions - 1:
                 trace.append("Rejected tool call during final synthesis")
-                error = "Muse requested a tool during final synthesis after its investigation budget; no result was accepted."
+                error = "The model requested a tool during final synthesis after its investigation budget; no result was accepted."
                 if on_progress:
                     on_progress("Final synthesis tried to call a tool; result rejected.")
-                return AgentResult(agent_name, [], trace, error, request_count())
+                return AgentResult(agent_name, [], trace, error, request_count(), model_retries=retry_count(), trace_events=trace_events)
             messages.append(message.model_dump(exclude_none=True))
             available_tools = {
                 tool["function"]["name"] for tool in request.get("tools", [])
@@ -642,6 +793,8 @@ def investigate(
                     if on_progress:
                         on_progress(f"Tool call: {name}({args[:120]})")
                     tool_result = _run_tool(repo, name, args)
+                    if name == "read_file" and tool_result.strip() and not tool_result.startswith("Tool error:"):
+                        source_read_completed = True
                     if name == "read_file":
                         try:
                             read_args = json.loads(args)
@@ -658,6 +811,7 @@ def investigate(
                             trace.append(_auto_follow_trace_entry(followups))
                             if on_progress:
                                 on_progress("Tool call: automatically followed local source calls.")
+                trace_events.append(make_trace_event(name, args, tool_result))
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": tool_result[:8000]})
         return AgentResult(
             agent_name,
@@ -665,33 +819,49 @@ def investigate(
             trace,
             "The model did not return a final answer after the reserved synthesis turn.",
             request_count(),
+            model_retries=retry_count(),
+            trace_events=trace_events,
         )
     except APITimeoutError:
         if on_progress:
             on_progress("Model request timed out; marking this result incomplete.")
+        timeout_error = (
+            f"The local model {model_id} timed out; this investigator is incomplete."
+            if inference_profile is not None
+            else "Muse timed out before returning a result. Check NVIDIA trial access, rate limits, and connectivity; this investigator is incomplete."
+        )
         return AgentResult(
             agent_name,
             [],
             trace,
-            "Muse timed out before returning a result. Check NVIDIA trial access, rate limits, and connectivity; this investigator is incomplete.",
+            timeout_error,
             request_count(),
+            model_retries=retry_count(),
+            trace_events=trace_events,
         )
     except ModelRequestBudgetExceeded as exc:
         if on_progress:
             on_progress("Model request budget exhausted.")
-        return AgentResult(agent_name, [], trace, str(exc), request_count())
+        return AgentResult(agent_name, [], trace, str(exc), request_count(), model_retries=retry_count(), trace_events=trace_events)
     except ModelTimeBudgetExceeded as exc:
         if on_progress:
             on_progress("Investigator time budget exhausted; marking this result incomplete.")
-        return AgentResult(agent_name, [], trace, str(exc), request_count())
+        return AgentResult(agent_name, [], trace, str(exc), request_count(), model_retries=retry_count(), trace_events=trace_events)
     except Exception as exc:
         # Do not print request payloads, credentials, or full network tracebacks to the UI.
         if on_progress:
             on_progress(f"Inference stopped: {type(exc).__name__}.")
+        provider_guidance = (
+            "Check the local Ollama service and whether this model supports tool calls."
+            if inference_profile is not None
+            else "Check NVIDIA trial access, rate limits, and connectivity."
+        )
         return AgentResult(
             agent_name,
             [],
             trace,
-            f"Inference failed ({type(exc).__name__}). Check NVIDIA trial access, rate limits, and connectivity.",
+            f"Inference failed ({type(exc).__name__}). {provider_guidance}",
             request_count(),
+            model_retries=retry_count(),
+            trace_events=trace_events,
         )

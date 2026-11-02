@@ -5,6 +5,12 @@ import os
 import subprocess
 from pathlib import Path
 
+from .diagnostics import (
+    extract_reproducer_api_hints,
+    extract_repository_clues,
+    is_test_harness_module,
+)
+
 IGNORED_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", ".mypy_cache", ".pytest_cache"}
 MAX_FILES = 5000
 MAX_FILE_BYTES = 256_000
@@ -151,6 +157,75 @@ class Repo:
                         return result + "\n\n" + "\n\n".join(notes)
         result = "\n".join(hits) if hits else "No matching Python lines found."
         return result + (f"\n\n{scan_note}" if scan_note else "")
+
+    def preseed_issue(self, issue: str, *, max_hits: int = 20, max_chars: int = 3000) -> str:
+        """Search bounded Python source for extracted issue clues without opening issue paths."""
+        clues = extract_repository_clues(issue, max_clues=3)
+        api_hints = extract_reproducer_api_hints(issue)
+        if (not clues and not api_hints) or max_hits <= 0 or max_chars <= 0:
+            return ""
+
+        files, scan_note = self._python_files_with_status()
+        hits: list[str] = []
+        seen_hits: set[str] = set()
+        for symbol in api_hints:
+            candidates = self.find_symbols(symbol).splitlines()
+            for candidate in candidates:
+                if not candidate or "No matching Python symbols" in candidate or candidate.startswith("Repository scan incomplete:"):
+                    continue
+                candidate_path = candidate.partition(":")[0].replace("/", ".").removesuffix(".py")
+                if is_test_harness_module(candidate_path):
+                    continue
+                hit = f"Reproducer API candidate: {candidate}"
+                if hit not in seen_hits:
+                    hits.append(hit)
+                    seen_hits.add(hit)
+                if len(hits) >= max_hits:
+                    break
+            if len(hits) >= max_hits:
+                break
+
+        for kind, clue in clues:
+            if len(hits) >= max_hits:
+                break
+            if kind == "filename":
+                matches = (
+                    f"Traceback file match: {path.relative_to(self.root).as_posix()}"
+                    for path in files
+                    if path.name.casefold() == clue.casefold()
+                )
+                for hit in matches:
+                    if hit not in seen_hits:
+                        hits.append(hit)
+                        seen_hits.add(hit)
+                    if len(hits) >= max_hits:
+                        break
+            else:
+                needle = clue.casefold()
+                for path in files:
+                    try:
+                        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+                    except OSError:
+                        continue
+                    relative = path.relative_to(self.root).as_posix()
+                    for number, line in enumerate(lines, 1):
+                        if needle in line.casefold():
+                            hit = f"Error text hit: {relative}:{number}: {line[:240]}"
+                            if hit not in seen_hits:
+                                hits.append(hit)
+                                seen_hits.add(hit)
+                            if len(hits) >= max_hits:
+                                break
+                    if len(hits) >= max_hits:
+                        break
+            if len(hits) >= max_hits:
+                hits = hits[:max_hits]
+                break
+
+        output = "\n".join(hits) if hits else "No deterministic repository clue hits found."
+        if scan_note:
+            output += f"\n{scan_note}"
+        return output[:max_chars]
 
     def find_symbols(self, query: str) -> str:
         query = query.strip().casefold()

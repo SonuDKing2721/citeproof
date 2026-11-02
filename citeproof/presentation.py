@@ -1,13 +1,16 @@
 """Small presentation helpers for clear citation states."""
 
+import json
 from datetime import datetime, timezone
 import math
+from pathlib import Path
 
 from .checker import check_result
 from .models import (
     AgentResult,
     Citation,
     DIAGNOSIS_REVIEW_STATES,
+    EVALUATION_SCHEMA_V4,
     EVALUATION_SCHEMA_V3,
     EVALUATION_SCHEMAS,
     FINDING_ORDER_RANKING_METHOD,
@@ -15,8 +18,53 @@ from .models import (
     VerificationReview,
 )
 from .repo import Repo
+from .trace import normalize_trace_events
 
 VERIFIED_CITATION_OUTCOMES = frozenset({"verified_exact", "corrected_unique_exact_quote"})
+MAX_SAVED_REPORT_BYTES = 4 * 1024 * 1024
+
+
+def find_saved_report(
+    directory: str | Path,
+    issue_id: str,
+    repository_commit: str,
+) -> tuple[Path, dict] | None:
+    """Find the best valid saved report for one exact issue and repository revision."""
+    if not issue_id.strip() or not repository_commit.strip():
+        return None
+    root = Path(directory).expanduser().resolve(strict=False)
+    if not root.is_dir():
+        return None
+
+    matches: list[tuple[bool, datetime, Path, dict]] = []
+    for path in root.glob("*.json"):
+        try:
+            resolved = path.resolve(strict=True)
+            resolved.relative_to(root)
+            if not resolved.is_file() or resolved.stat().st_size > MAX_SAVED_REPORT_BYTES:
+                continue
+            report = json.loads(resolved.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(report, dict):
+            continue
+        if (
+            report.get("schema") not in EVALUATION_SCHEMAS
+            or report.get("issue_id") != issue_id
+            or report.get("repository_commit") != repository_commit
+            or report.get("status") not in {"complete", "incomplete"}
+        ):
+            continue
+        workflow = report.get("workflow")
+        workflow = workflow if isinstance(workflow, dict) else {}
+        timestamp = _safe_timestamp(workflow.get("run_timestamp_utc") or report.get("run_timestamp_utc"))
+        parsed = datetime.fromisoformat(timestamp) if timestamp else datetime.min.replace(tzinfo=timezone.utc)
+        matches.append((report.get("status") == "complete", parsed, resolved, report))
+
+    if not matches:
+        return None
+    _, _, path, report = max(matches, key=lambda item: (item[0], item[1], item[2].name))
+    return path, report
 
 
 def finding_citation_summary(finding: Finding) -> str:
@@ -88,9 +136,10 @@ def make_run_snapshot(
     model_settings: dict | None = None,
     model_request_counts: dict | None = None,
     diagnosis_review: dict | None = None,
-    report_schema: str = EVALUATION_SCHEMA_V3,
+    report_schema: str = EVALUATION_SCHEMA_V4,
     ranking_method: str | None = FINDING_ORDER_RANKING_METHOD,
     saved_investigator_localization: list[dict] | None = None,
+    endpoint_health: dict | None = None,
 ) -> dict:
     """Keep the completed UI run available when Streamlit reruns the script."""
     normalized_timestamp = _safe_timestamp(run_timestamp_utc)
@@ -114,6 +163,27 @@ def make_run_snapshot(
         "report_schema": report_schema,
         "ranking_method": ranking_method,
         "saved_investigator_localization": saved_investigator_localization,
+        "endpoint_health": _safe_endpoint_health(endpoint_health),
+    }
+
+
+def _safe_endpoint_health(value: object) -> dict | None:
+    if not isinstance(value, dict) or value.get("status") not in {"ready", "slow", "unavailable"}:
+        return None
+    raw_elapsed = value.get("elapsed_seconds")
+    elapsed = (
+        min(max(float(raw_elapsed), 0.0), 15.0)
+        if isinstance(raw_elapsed, (int, float)) and not isinstance(raw_elapsed, bool)
+        else 0.0
+    )
+    raw_error = value.get("error")
+    error = raw_error[:80] if isinstance(raw_error, str) else None
+    requests = 0 if error == "missing_api_key" else 1
+    return {
+        "status": value["status"],
+        "elapsed_seconds": elapsed,
+        "error": error,
+        "request_count": requests,
     }
 
 
@@ -133,7 +203,7 @@ def snapshot_from_saved_report(
         raise ValueError("Saved report has an unsupported schema.")
     ranking_method = None
     saved_investigator_localization = None
-    if report_schema == EVALUATION_SCHEMA_V3:
+    if report_schema in {EVALUATION_SCHEMA_V3, EVALUATION_SCHEMA_V4}:
         ranking_method = report.get("ranking_method")
         if ranking_method != FINDING_ORDER_RANKING_METHOD:
             raise ValueError("Saved report has an unsupported ranking method.")
@@ -190,8 +260,13 @@ def snapshot_from_saved_report(
                 explanation=str(raw_finding.get("explanation", ""))[:1200],
                 citations=citations,
             ))
-        raw_trace = raw_agent.get("tool_trace", [])
-        trace = [str(item)[:300] for item in raw_trace[:100]] if isinstance(raw_trace, list) else []
+        if report_schema == EVALUATION_SCHEMA_V4:
+            trace_events, trace_events_known = normalize_trace_events(raw_agent.get("trace_events"))
+            trace = []
+        else:
+            raw_trace = raw_agent.get("tool_trace", [])
+            trace = [str(item)[:300] for item in raw_trace[:100]] if isinstance(raw_trace, list) else []
+            trace_events, trace_events_known = [], False
         error = raw_agent.get("error")
         result = AgentResult(
             agent_name=str(raw_agent.get("name", "Investigator"))[:120],
@@ -203,6 +278,13 @@ def snapshot_from_saved_report(
                 isinstance(raw_agent.get("model_requests"), int)
                 and not isinstance(raw_agent.get("model_requests"), bool)
             ),
+            model_retries=_safe_request_count(raw_agent.get("model_retries")),
+            model_retries_known=(
+                isinstance(raw_agent.get("model_retries"), int)
+                and not isinstance(raw_agent.get("model_retries"), bool)
+            ),
+            trace_events=trace_events,
+            trace_events_known=trace_events_known,
         )
         results.append(check_result(repo, result))
 
@@ -233,6 +315,7 @@ def snapshot_from_saved_report(
         timings=_safe_timings(workflow.get("timings")),
         model_settings=_safe_model_settings(report.get("model_settings")),
         model_request_counts=_safe_request_counts(report.get("model_requests")),
+        endpoint_health=_safe_endpoint_health(report.get("endpoint_health")),
         diagnosis_review=report.get("diagnosis_review"),
         report_schema=report_schema,
         ranking_method=ranking_method,

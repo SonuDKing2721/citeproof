@@ -13,7 +13,88 @@ from citeproof.models import AgentResult
 from citeproof.models import Citation, Finding, VerificationReview
 
 
+def fake_repo(commit="pinned-sha"):
+    return SimpleNamespace(commit=commit, preseed_issue=lambda _issue: "")
+
+
 class BudgetMatchedComparisonTests(unittest.TestCase):
+    def test_pair_and_baseline_receive_the_same_deterministic_repository_hints(self):
+        calls = []
+        preseed = "Reproducer API candidate: src/pkg/api.py:1-8"
+
+        def investigator(*args, **kwargs):
+            calls.append(kwargs)
+            count = 2 if kwargs.get("request_budget") else 1
+            if kwargs.get("request_budget"):
+                kwargs["request_budget"].used = 2
+            return AgentResult(args[2], [], [], model_requests=count)
+
+        repo = SimpleNamespace(commit="pinned-sha", preseed_issue=lambda _issue: preseed)
+        run_budget_matched_comparison(
+            repo,
+            "issue",
+            {"issue_id": "org/repo#7", "primary_files": ["src/pkg/api.py"]},
+            investigator=investigator,
+            verifier=None,
+            parallel_pair=False,
+        )
+
+        self.assertEqual([call["preseed"] for call in calls], [preseed, preseed, preseed])
+
+    def test_minimum_baseline_budget_allows_a_tool_turn_and_a_final_turn(self):
+        calls = []
+
+        def investigator(*args, **kwargs):
+            calls.append(kwargs)
+            if kwargs.get("request_budget"):
+                kwargs["request_budget"].used = 2
+                return AgentResult(args[2], [], [], model_requests=2)
+            return AgentResult(args[2], [], [], model_requests=1)
+
+        run_budget_matched_comparison(
+            fake_repo(),
+            "issue",
+            {"issue_id": "org/repo#2", "primary_files": ["src/fix.py"]},
+            investigator=investigator,
+            verifier=None,
+            pair_max_completions=3,
+        )
+
+        baseline = next(item for item in calls if item.get("request_budget"))
+        self.assertEqual(baseline["request_budget"].limit, 2)
+        self.assertEqual(baseline["max_completions"], 2)
+
+    def test_local_comparison_skips_verifier_and_runs_pair_sequentially(self):
+        calls = []
+
+        def investigator(*args, **kwargs):
+            calls.append((args[2], kwargs.get("max_completions")))
+            count = 2
+            if kwargs.get("request_budget"):
+                kwargs["request_budget"].used = 4
+                count = 4
+            return AgentResult(args[2], [], [], model_requests=count)
+
+        comparison = run_budget_matched_comparison(
+            fake_repo(),
+            "issue",
+            {"issue_id": "org/repo#1", "primary_files": ["src/fix.py"]},
+            investigator=investigator,
+            verifier=None,
+            parallel_pair=False,
+            pair_max_completions=3,
+        )
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([item[1] for item in calls[:2]], [3, 3])
+        self.assertEqual(calls[0][0], "Investigator A · symptom-first")
+        self.assertEqual(calls[1][0], "Investigator B · structure-first")
+        self.assertIsNone(comparison.verification)
+        self.assertEqual(comparison.pair_model_requests, 4)
+        self.assertEqual(comparison.baseline_model_requests, 4)
+        self.assertTrue(comparison.budget_matched)
+        self.assertEqual(comparison.stage_timings["verification_seconds"], 0.0)
+
     def test_recorded_click_budget_comparison_matches_the_saved_evaluation(self):
         root = Path(__file__).resolve().parents[1]
         report = json.loads(
@@ -81,7 +162,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
             patch("citeproof.benchmark.time.monotonic", side_effect=[10, 12, 12, 13, 13, 16, 17]),
         ):
             comparison = run_budget_matched_comparison(
-                SimpleNamespace(commit="pinned-sha"),
+                fake_repo(),
                 "issue",
                 {"issue_id": "org/repo#1", "primary_files": ["src/fix.py"]},
                 investigator=investigator,
@@ -105,7 +186,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
                 kwargs["request_budget"].used = count
             return AgentResult(args[2], [], [], model_requests=count)
 
-        repo = SimpleNamespace(commit="pinned-sha")
+        repo = fake_repo()
         gold = {
             "issue_id": "org/repo#12",
             "primary_files": ["src/fix.py"],
@@ -186,7 +267,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
         )
         with patch("citeproof.benchmark.verify_findings", return_value=review) as verifier:
             comparison = run_budget_matched_comparison(
-                SimpleNamespace(commit="pinned-sha"),
+                fake_repo(),
                 "public issue text",
                 {"issue_id": "org/repo#12", "primary_files": ["src/fix.py"]},
                 investigator=investigator,
@@ -208,7 +289,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
             return AgentResult(args[2], [], [], model_requests=3)
 
         comparison = run_budget_matched_comparison(
-            SimpleNamespace(commit="pinned-sha"),
+            fake_repo(),
             "issue only",
             {"issue_id": "org/repo#12", "primary_files": ["src/fix.py"]},
             investigator=investigator,
@@ -232,7 +313,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
             patch("citeproof.benchmark.time.monotonic", side_effect=[1, 3, 3, 4, 5]),
         ):
             comparison = run_budget_matched_comparison(
-                SimpleNamespace(commit="pinned-sha"),
+                fake_repo(),
                 "issue",
                 {"issue_id": "org/repo#1", "primary_files": ["src/fix.py"]},
                 investigator=investigator,
@@ -258,7 +339,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
             return AgentResult(args[2], [], [], "provider timeout", 4)
 
         comparison = run_budget_matched_comparison(
-            SimpleNamespace(commit="pinned-sha"),
+            fake_repo(),
             "issue only",
             {"issue_id": "org/repo#12", "primary_files": ["src/fix.py"]},
             investigator=investigator,
@@ -282,7 +363,7 @@ class BudgetMatchedComparisonTests(unittest.TestCase):
             return AgentResult(args[2], [], [], model_requests=count)
 
         comparison = run_budget_matched_comparison(
-            SimpleNamespace(commit="pinned-sha"),
+            fake_repo(),
             "issue only",
             {"issue_id": "org/repo#12", "primary_files": ["src/fix.py"]},
             investigator=investigator,

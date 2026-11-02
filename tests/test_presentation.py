@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ from citeproof.presentation import (
     citation_range_details,
     citation_quote_details,
     finding_citation_summary,
+    find_saved_report,
     make_run_snapshot,
     snapshot_from_saved_report,
     verification_from_payload,
@@ -17,6 +19,75 @@ from citeproof.repo import Repo
 
 
 class CitationPresentationTests(unittest.TestCase):
+    def test_saved_report_lookup_requires_issue_and_commit_and_prefers_newest_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            candidates = {
+                "older-complete.json": {
+                    "schema": "citeproof-evaluation/v3",
+                    "issue_id": "org/repo#7",
+                    "repository_commit": "abc123",
+                    "status": "complete",
+                    "run_timestamp_utc": "2026-10-01T00:00:00+00:00",
+                },
+                "newer-incomplete.json": {
+                    "schema": "citeproof-evaluation/v3",
+                    "issue_id": "org/repo#7",
+                    "repository_commit": "abc123",
+                    "status": "incomplete",
+                    "run_timestamp_utc": "2026-10-03T00:00:00+00:00",
+                },
+                "newer-complete.json": {
+                    "schema": "citeproof-evaluation/v3",
+                    "issue_id": "org/repo#7",
+                    "repository_commit": "abc123",
+                    "status": "complete",
+                    "run_timestamp_utc": "2026-10-02T00:00:00+00:00",
+                },
+                "wrong-commit.json": {
+                    "schema": "citeproof-evaluation/v3",
+                    "issue_id": "org/repo#7",
+                    "repository_commit": "def456",
+                    "status": "complete",
+                    "run_timestamp_utc": "2026-10-04T00:00:00+00:00",
+                },
+                "wrong-issue.json": {
+                    "schema": "citeproof-evaluation/v3",
+                    "issue_id": "org/repo#8",
+                    "repository_commit": "abc123",
+                    "status": "complete",
+                    "run_timestamp_utc": "2026-10-05T00:00:00+00:00",
+                },
+            }
+            for filename, payload in candidates.items():
+                (reports / filename).write_text(json.dumps(payload), encoding="utf-8")
+            (reports / "broken.json").write_text("{", encoding="utf-8")
+
+            found = find_saved_report(reports, "org/repo#7", "abc123")
+
+        self.assertIsNotNone(found)
+        self.assertEqual(found[0].name, "newer-complete.json")
+
+    def test_saved_report_lookup_uses_newest_incomplete_if_no_complete_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            for day in ("01", "02"):
+                (reports / f"run-{day}.json").write_text(
+                    json.dumps({
+                        "schema": "citeproof-evaluation/v3",
+                        "issue_id": "org/repo#7",
+                        "repository_commit": "abc123",
+                        "status": "incomplete",
+                        "run_timestamp_utc": f"2026-10-{day}T00:00:00+00:00",
+                    }),
+                    encoding="utf-8",
+                )
+
+            found = find_saved_report(reports, "org/repo#7", "abc123")
+
+        self.assertIsNotNone(found)
+        self.assertEqual(found[0].name, "run-02.json")
+
     def test_finding_citation_summary_has_all_four_states(self):
         self.assertEqual(finding_citation_summary(Finding("claim", "", [])), "no_citations")
         self.assertEqual(
@@ -102,6 +173,22 @@ class CitationPresentationTests(unittest.TestCase):
 
         self.assertIs(snapshot["verification"], review)
 
+    def test_run_snapshot_keeps_bounded_endpoint_health_metadata(self):
+        snapshot = make_run_snapshot(
+            [],
+            "abc123",
+            "Issue",
+            None,
+            endpoint_health={"status": "slow", "elapsed_seconds": 7.25, "error": None},
+        )
+
+        self.assertEqual(snapshot["endpoint_health"], {
+            "status": "slow",
+            "elapsed_seconds": 7.25,
+            "error": None,
+            "request_count": 1,
+        })
+
     def test_saved_verification_payload_is_bounded_and_rejects_bad_status_types(self):
         self.assertIsNone(verification_from_payload({"status": []}))
         review = verification_from_payload({
@@ -181,10 +268,13 @@ class CitationPresentationTests(unittest.TestCase):
         self.assertEqual(snapshot["verification"].selected_finding_id, "A-F1")
         self.assertEqual(snapshot["model_request_counts"], {"investigators": 9, "verification": 1, "total": 10})
         self.assertFalse(snapshot["results"][0].model_requests_known)
+        self.assertFalse(snapshot["results"][0].model_retries_known)
         self.assertTrue(snapshot["results"][0].findings[0].citations[0].valid)
         self.assertEqual(snapshot["results"][0].findings[0].citations[0].outcome, "corrected_unique_exact_quote")
         self.assertEqual(snapshot["results"][0].findings[0].citations[0].claimed_start_line, 1)
         self.assertEqual(snapshot["results"][0].findings[0].citations[0].corrected_start_line, 2)
+        self.assertFalse(snapshot["results"][0].trace_events_known)
+        self.assertEqual(snapshot["results"][0].trace_events, [])
         restored_report = build_run_report(
             gold_case,
             snapshot["repo_commit"],
@@ -401,6 +491,73 @@ class CitationPresentationTests(unittest.TestCase):
         )
         self.assertEqual(exported["ranking_method"], "finding_order_descending_plausibility")
         self.assertEqual(exported["investigator_localization"], ranking)
+
+    def test_v4_saved_report_restores_safe_trace_summaries_not_legacy_trace_text(self):
+        ranking = [
+            {
+                "name": name,
+                "status": "complete",
+                "ranked_files": [],
+                "primary_hit_at_1": False,
+                "primary_file_reciprocal_rank": 0,
+                "gold_file_recall_at_3": 0,
+            }
+            for name in ("A", "B")
+        ]
+        event = {
+            "tool": "read_file",
+            "request_summary": "sample.py:2-2",
+            "result_summary": "Read 1 source lines; source text withheld.",
+        }
+        report = {
+            "schema": "citeproof-evaluation/v4",
+            "ranking_method": "finding_order_descending_plausibility",
+            "investigator_localization": ranking,
+            "issue_id": "pallets/click#1",
+            "repository_commit": "abc123",
+            "agents": [
+                {
+                    "name": "A",
+                    "tool_trace": ["LOCAL_SECRET_RAW_TRACE"],
+                    "trace_events": [event],
+                    "findings": [{
+                        "claim": "A claim",
+                        "citations": [{
+                            "path": "sample.py",
+                            "symbol": "",
+                            "start_line": 2,
+                            "end_line": 2,
+                            "quote": "needle = True",
+                        }],
+                    }],
+                },
+                {"name": "B", "trace_events": [], "findings": []},
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "sample.py").write_text("header\nneedle = True\n", encoding="utf-8")
+            repo = Repo(tmp)
+            repo.commit = "abc123"
+            snapshot = snapshot_from_saved_report(report, {"issue_id": "pallets/click#1"}, "Issue", repo)
+
+        self.assertEqual(snapshot["results"][0].trace_events, [event])
+        self.assertTrue(snapshot["results"][0].trace_events_known)
+        self.assertEqual(snapshot["results"][0].trace, [])
+        exported = build_run_report(
+            {"issue_id": "pallets/click#1", "primary_files": ["sample.py"]},
+            "abc123",
+            "model",
+            "provider",
+            snapshot["results"],
+            report_schema=snapshot["report_schema"],
+            ranking_method=snapshot["ranking_method"],
+            preserved_investigator_localization=snapshot["saved_investigator_localization"],
+        )
+        serialized = json.dumps(exported)
+        self.assertEqual(exported["agents"][0]["trace_events"], [event])
+        self.assertNotIn("tool_trace", exported["agents"][0])
+        self.assertNotIn("LOCAL_SECRET_RAW_TRACE", serialized)
 
     def test_saved_reports_fail_closed_on_malformed_schema_and_v3_metric_status(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -118,6 +118,61 @@ class RunStateContractTests(unittest.TestCase):
 
 
 class RunReportV2Tests(unittest.TestCase):
+    def test_default_report_schema_v4_persists_only_sanitized_trace_events(self):
+        event = {
+            "tool": "read_file",
+            "request_summary": "src/module.py:3-5",
+            "result_summary": "Read 3 source lines; source text withheld.",
+        }
+        report = build_run_report(
+            {"issue_id": "org/repo#10", "primary_files": ["src/module.py"]},
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [
+                AgentResult("A", [], [], trace_events=[event]),
+                AgentResult("B", [], []),
+            ],
+        )
+
+        self.assertEqual(report["schema"], "citeproof-evaluation/v4")
+        self.assertEqual(report["agents"][0]["trace_events"], [event])
+        self.assertEqual(report["agents"][1]["trace_events"], [])
+
+    def test_report_keeps_readiness_request_separate_from_inference_attempts(self):
+        report = build_run_report(
+            {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [result("A"), result("B")],
+            endpoint_health={"status": "slow", "elapsed_seconds": 7.25, "error": None},
+        )
+
+        self.assertEqual(report["endpoint_health"], {
+            "status": "slow",
+            "elapsed_seconds": 7.25,
+            "error": None,
+            "request_count": 1,
+        })
+        self.assertEqual(report["model_requests"]["investigators"], 0)
+
+    def test_report_records_attempts_and_retries_per_investigator(self):
+        report = build_run_report(
+            {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},
+            "abc123",
+            "meta/muse-glimmer-30b",
+            "NVIDIA API Catalog",
+            [
+                AgentResult("A", [], [], model_requests=4, model_retries=3),
+                AgentResult("B", [], [], model_requests=1, model_retries=0),
+            ],
+        )
+
+        self.assertEqual([agent["model_requests"] for agent in report["agents"]], [4, 1])
+        self.assertEqual([agent["model_retries"] for agent in report["agents"]], [3, 0])
+        self.assertEqual(report["model_retries"], {"investigators": 3, "total": 3})
+
     def test_completed_empty_investigation_has_an_explicit_no_findings_outcome(self):
         report = build_run_report(
             {"issue_id": "org/repo#10", "primary_files": ["src/main.py"]},
@@ -199,7 +254,7 @@ class RunReportV2Tests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(report["schema"], "citeproof-evaluation/v3")
+        self.assertEqual(report["schema"], "citeproof-evaluation/v4")
         self.assertEqual(report["ranking_method"], "finding_order_descending_plausibility")
         self.assertEqual(len(report["investigator_localization"]), 2)
         self.assertEqual(report["status"], "complete")

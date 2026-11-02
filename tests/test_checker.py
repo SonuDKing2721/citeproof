@@ -207,6 +207,17 @@ class CitationOutcomeTests(unittest.TestCase):
             False,
         )
 
+    def test_symlink_citation_to_file_outside_repo_is_rejected(self):
+        outside = Path(self.tempdir.name) / "outside_source.py"
+        outside.write_text("needle = True\n", encoding="utf-8")
+        link = self.root / "linked.py"
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"Symlinks are unavailable in this environment: {type(exc).__name__}")
+
+        self.assert_outcome(self.citation(path="linked.py"), "path_outside_repo", False)
+
     def test_oversized_file_has_path_unreadable_outcome(self):
         (self.root / "large.py").write_bytes(b"x" * (MAX_FILE_BYTES + 1))
         self.assert_outcome(
@@ -234,6 +245,38 @@ class CitationOutcomeTests(unittest.TestCase):
 
     def test_empty_quote_has_empty_quote_outcome(self):
         self.assert_outcome(self.citation(quote="  \n "), "empty_quote", False)
+
+    def test_rejects_pass_as_a_quote_too_short_to_support_a_location_claim(self):
+        (self.root / "sample.py").write_text("def target():\n    pass\n", encoding="utf-8")
+
+        self.assert_outcome(
+            self.citation(start_line=2, end_line=2, quote="pass"),
+            "quote_too_short",
+            False,
+        )
+
+    def test_rejects_return_variable_as_a_quote_too_short_to_support_a_location_claim(self):
+        (self.root / "sample.py").write_text("def target(value):\n    return x\n", encoding="utf-8")
+
+        checked = self.assert_outcome(
+            self.citation(start_line=2, end_line=2, quote="return x"),
+            "quote_too_short",
+            False,
+        )
+
+        self.assertIsNone(checked.corrected_start_line)
+
+    def test_keeps_a_meaningful_one_line_quote_verified(self):
+        source = "def target(value):\n    result = value.encode('utf-8')\n    return result\n"
+        (self.root / "sample.py").write_text(source, encoding="utf-8")
+
+        checked = self.assert_outcome(
+            self.citation(start_line=2, end_line=2, quote="result = value.encode('utf-8')"),
+            "verified_exact",
+            True,
+        )
+
+        self.assertEqual(checked.effective_range, (2, 2))
 
     def test_absent_quote_has_quote_not_found_outcome(self):
         self.assert_outcome(self.citation(quote="not in the file"), "quote_not_found", False)

@@ -1,5 +1,6 @@
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from streamlit.testing.v1 import AppTest
 
@@ -8,6 +9,164 @@ from citeproof.presentation import make_run_snapshot
 
 
 class AppUITests(unittest.TestCase):
+    def test_blind_review_is_available_for_saved_pair_baseline_comparisons(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertTrue(any(item.label == "Blind pair-versus-baseline review" for item in app.expander))
+
+    def test_results_are_grouped_into_accessible_evidence_tabs_with_safe_trace_replay(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        app.session_state["last_run"] = make_run_snapshot(
+            [
+                AgentResult(
+                    "Investigator A",
+                    [Finding("Cause", "The `render_result` helper drops the output.", [
+                        Citation("src/example.py", "render_result", 1, 1, "render_result()", valid=True,
+                                 outcome="verified_exact"),
+                    ])],
+                    [],
+                    trace_events=[{
+                        "tool": "read_file",
+                        "request_summary": "src/example.py:1-1",
+                        "result_summary": "Read 1 source lines; source text withheld.",
+                    }, {
+                        "tool": "find_symbols",
+                        "request_summary": "symbol: render_result",
+                        "result_summary": "Found 1 matching symbols; source text withheld.",
+                    }],
+                ),
+                AgentResult("Investigator B", [], []),
+            ],
+            "abc123",
+            "Bug report",
+            None,
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertEqual([tab.label for tab in app.tabs], ["Findings", "Compare", "Trace", "Report"])
+        self.assertTrue(any("Status · Complete" in item.value for item in app.markdown))
+        self.assertTrue(any("A verified citation proves the quote exists" in item.value for item in app.markdown))
+        self.assertTrue(any(item.label == "Trace step" for item in app.slider))
+        rendered_text = [item.value for item in app.markdown] + [item.value for item in app.caption]
+        self.assertTrue(any("Direct citation anchor" in value for value in rendered_text))
+        self.assertFalse(any("✅" in value or "❌" in value for value in rendered_text))
+
+    def test_single_trace_event_and_manual_run_report_render_without_gold_labels(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        app.session_state["last_run"] = make_run_snapshot(
+            [
+                AgentResult(
+                    "Investigator A",
+                    [],
+                    [],
+                    trace_events=[{
+                        "tool": "read_file",
+                        "request_summary": "src/example.py:1-2",
+                        "result_summary": "Read 2 source lines; source text withheld.",
+                    }],
+                ),
+                AgentResult("Investigator B", [], []),
+            ],
+            "abc123",
+            "Manual issue",
+            None,
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertFalse(app.slider)
+        self.assertTrue(any("Single recorded step" in item.value for item in app.caption))
+        self.assertTrue(any("No curated gold labels" in item.value for item in app.info))
+        self.assertIn("Download unscored run as JSON", [item.label for item in app.get("download_button")])
+
+    def test_unavailable_endpoint_offers_a_pinned_saved_run_without_calling_inference(self):
+        with patch.dict("os.environ", {"NVIDIA_API_KEY": ""}):
+            app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+            next(item for item in app.selectbox if item.label == "Issue case").select(
+                "Curated case · Click #3449 · multi-PR"
+            ).run(timeout=20)
+            check_button = next(item for item in app.button if item.label == "Check endpoint")
+
+            check_button.click().run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertTrue(any("Endpoint: Unavailable" in item.value for item in app.markdown))
+        self.assertIn("Open saved run", [item.label for item in app.button])
+
+    def test_incomplete_run_offers_same_issue_saved_run_only_for_matching_commit(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        next(item for item in app.selectbox if item.label == "Issue case").select(
+            "Curated case · Click #3449 · multi-PR"
+        ).run(timeout=20)
+        gold_case = {"issue_id": "pallets/click#3449", "primary_files": ["src/click/core.py"]}
+        app.session_state["last_run"] = make_run_snapshot(
+            [
+                AgentResult("Investigator A", [], [], error="provider timeout"),
+                AgentResult("Investigator B", [], []),
+            ],
+            "a5f5aa6d4012d256ccca24638f2642fc371e9f77",
+            "Click pager issue",
+            gold_case,
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertIn("Open saved run", [item.label for item in app.button])
+
+        app.session_state["last_run"] = make_run_snapshot(
+            [
+                AgentResult("Investigator A", [], [], error="provider timeout"),
+                AgentResult("Investigator B", [], []),
+            ],
+            "wrong-commit",
+            "Click pager issue",
+            gold_case,
+        )
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertNotIn("Open saved run", [item.label for item in app.button])
+
+    def test_run_summary_shows_model_attempts_and_retries_per_investigator(self):
+        app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+        app.session_state["last_run"] = make_run_snapshot(
+            [
+                AgentResult("Investigator A", [], [], model_requests=4, model_retries=3),
+                AgentResult("Investigator B", [], [], model_requests=1, model_retries=0),
+            ],
+            "abc123",
+            "Bug report",
+            None,
+        )
+
+        app.run(timeout=20)
+
+        self.assertFalse(app.exception)
+        self.assertTrue(any(
+            "Model attempts · Investigator A 4 (3 retries) · Investigator B 1 (0 retries)" in item.value
+            for item in app.caption
+        ))
+
+    def test_endpoint_status_labels_are_explicit_and_visible(self):
+        for status, label in (("ready", "Ready"), ("slow", "Slow"), ("unavailable", "Unavailable")):
+            with self.subTest(status=status):
+                app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
+                app.session_state["endpoint_health"] = {
+                    "status": status,
+                    "elapsed_seconds": 1.0,
+                    "error": None,
+                }
+
+                app.run(timeout=20)
+
+                self.assertFalse(app.exception)
+                self.assertTrue(any(f"Endpoint: {label}" in item.value for item in app.markdown))
+
     def test_evidence_review_renders_outcomes_claimed_and_corrected_ranges_and_rejected_quote(self):
         app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
         corrected = Citation(
@@ -192,7 +351,9 @@ class AppUITests(unittest.TestCase):
 
     def test_app_offers_transparently_labeled_cached_pair_and_live_review_demo(self):
         app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run(timeout=20)
-        app.selectbox[0].select("Curated case · Click #3449 · multi-PR").run(timeout=20)
+        next(item for item in app.selectbox if item.label == "Issue case").select(
+            "Curated case · Click #3449 · multi-PR"
+        ).run(timeout=20)
         demo_button = next(
             item for item in app.button
             if item.label == "Load Cached A/B + Live Verifier Demo · No Model Call"
@@ -204,6 +365,8 @@ class AppUITests(unittest.TestCase):
         self.assertTrue(any("Cached investigator pair" in item.value for item in app.caption))
         self.assertTrue(any("separate verifier review was live" in item.value for item in app.info))
         self.assertIn("04  /  Skeptical Review", [item.value for item in app.header])
+        self.assertIn("Issue-comment draft", [item.value for item in app.subheader])
+        self.assertTrue(any("https://github.com/pallets/click/blob/" in item.value for item in app.code))
 
 
 if __name__ == "__main__":

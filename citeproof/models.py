@@ -8,8 +8,14 @@ DIAGNOSIS_REVIEW_STATES = {
     "incorrect",
 }
 EVALUATION_SCHEMA_V3 = "citeproof-evaluation/v3"
+EVALUATION_SCHEMA_V4 = "citeproof-evaluation/v4"
 FINDING_ORDER_RANKING_METHOD = "finding_order_descending_plausibility"
-EVALUATION_SCHEMAS = {"citeproof-evaluation/v1", "citeproof-evaluation/v2", EVALUATION_SCHEMA_V3}
+EVALUATION_SCHEMAS = {
+    "citeproof-evaluation/v1",
+    "citeproof-evaluation/v2",
+    EVALUATION_SCHEMA_V3,
+    EVALUATION_SCHEMA_V4,
+}
 
 
 @dataclass
@@ -45,6 +51,7 @@ class Finding:
     claim: str
     explanation: str
     citations: list[Citation] = field(default_factory=list)
+    evidence_diagnostics: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -55,6 +62,10 @@ class AgentResult:
     error: str | None = None
     model_requests: int = 0
     model_requests_known: bool = True
+    model_retries: int = 0
+    model_retries_known: bool = True
+    trace_events: list[dict] = field(default_factory=list)
+    trace_events_known: bool = True
 
 
 @dataclass

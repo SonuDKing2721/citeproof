@@ -17,13 +17,15 @@ from .model_config import (
 from .models import (
     AgentResult,
     DIAGNOSIS_REVIEW_STATES,
+    EVALUATION_SCHEMA_V4,
     EVALUATION_SCHEMA_V3,
     FINDING_ORDER_RANKING_METHOD,
     Finding,
     VerificationReview,
 )
 
-from .presentation import finding_citation_summary
+from .presentation import _safe_endpoint_health, finding_citation_summary
+from .trace import normalize_trace_events
 
 
 @dataclass(frozen=True)
@@ -321,6 +323,13 @@ def _safe_request_counts(value: object) -> dict[str, int] | None:
     }
 
 
+def _trace_report_fields(result: AgentResult, report_schema: str) -> dict[str, Any]:
+    if report_schema != EVALUATION_SCHEMA_V4:
+        return {"tool_trace": result.trace}
+    events, valid = normalize_trace_events(result.trace_events)
+    return {"trace_events": events if result.trace_events_known and valid else None}
+
+
 def build_run_report(
     gold_case: dict[str, Any],
     repository_commit: str,
@@ -338,20 +347,24 @@ def build_run_report(
     diagnosis_review_status: str = "not_reviewed",
     diagnosis_review_reviewer: str | None = None,
     diagnosis_review_note: str | None = None,
-    report_schema: str = EVALUATION_SCHEMA_V3,
+    report_schema: str = EVALUATION_SCHEMA_V4,
     ranking_method: str | None = FINDING_ORDER_RANKING_METHOD,
     preserved_investigator_localization: object = None,
+    endpoint_health: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a shareable one-run report without copying hidden file labels."""
     if (
         not isinstance(report_schema, str)
-        or report_schema not in {"citeproof-evaluation/v1", "citeproof-evaluation/v2", EVALUATION_SCHEMA_V3}
+        or report_schema not in {
+            "citeproof-evaluation/v1", "citeproof-evaluation/v2", EVALUATION_SCHEMA_V3, EVALUATION_SCHEMA_V4,
+        }
     ):
         raise ValueError("Unknown evaluation report schema.")
-    if report_schema == EVALUATION_SCHEMA_V3 and ranking_method != FINDING_ORDER_RANKING_METHOD:
+    has_v3_metrics = report_schema in {EVALUATION_SCHEMA_V3, EVALUATION_SCHEMA_V4}
+    if has_v3_metrics and ranking_method != FINDING_ORDER_RANKING_METHOD:
         raise ValueError("Unknown investigator ranking method.")
     preserved_metrics = None
-    if report_schema == EVALUATION_SCHEMA_V3 and preserved_investigator_localization is not None:
+    if has_v3_metrics and preserved_investigator_localization is not None:
         preserved_metrics = _safe_investigator_localization(preserved_investigator_localization)
         if preserved_metrics is None:
             raise ValueError("Saved investigator localization metrics are invalid.")
@@ -431,6 +444,12 @@ def build_run_report(
                 else None
             ),
         }
+    known_retry_counts = all(result.model_retries_known for result in results[:minimum_agents])
+    investigator_retries = (
+        sum(max(0, int(result.model_retries)) for result in results[:minimum_agents])
+        if known_retry_counts
+        else None
+    )
     cross_check_status = (
         "not_applicable" if workflow_kind == "single_agent_baseline" else evidence_comparison.status
     )
@@ -464,13 +483,18 @@ def build_run_report(
         "diagnosis_review": diagnosis_review,
         "diagnosis_correctness_metric": "not_scored",
         "model_requests": request_counts,
+        "endpoint_health": _safe_endpoint_health(endpoint_health),
+        "model_retries": {
+            "investigators": investigator_retries,
+            "total": investigator_retries,
+        },
         "verification": verification_report_payload(verification),
         "evaluation_note": gold_case.get("evaluation_note", ""),
         "metric_note": (
-            "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness."
-            if report_schema != EVALUATION_SCHEMA_V3
-            else "File-localization proxy metrics use human-curated file labels from the merged fix. "
+            "File-localization proxy metrics use human-curated file labels from the merged fix. "
             "Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness."
+            if has_v3_metrics
+            else "File labels are human-curated proxies from the merged fix. These metrics do not score diagnosis correctness."
         ),
         "agents": [
             {
@@ -479,12 +503,16 @@ def build_run_report(
                 "model_requests": (
                     max(0, int(result.model_requests)) if result.model_requests_known else None
                 ),
-                "tool_trace": result.trace,
+                "model_retries": (
+                    max(0, int(result.model_retries)) if result.model_retries_known else None
+                ),
+                **_trace_report_fields(result, report_schema),
                 "findings": [
                     {
                         "claim": finding.claim,
                         "explanation": finding.explanation,
                         "citation_summary": finding_citation_summary(finding),
+                        "evidence_diagnostics": finding.evidence_diagnostics,
                         "citations": [
                             {
                                 "path": citation.path,
@@ -509,7 +537,7 @@ def build_run_report(
             for result in results
         ],
     }
-    if report_schema == EVALUATION_SCHEMA_V3:
+    if has_v3_metrics:
         report["ranking_method"] = ranking_method
         report["investigator_localization"] = (
             preserved_metrics
@@ -567,6 +595,8 @@ def build_comparison_report(
     provider: str,
     comparison: Any,
     verification: VerificationReview | None = None,
+    *,
+    model_settings: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Create a shareable pair-versus-single report without exposing labels."""
     run_timestamp = datetime.now(timezone.utc).isoformat()
@@ -597,6 +627,7 @@ def build_comparison_report(
         workflow_kind="live_pair",
         run_timestamp_utc=run_timestamp,
         timings=pair_timings,
+        model_settings=model_settings,
     )
     baseline_results = [comparison.baseline_result] if comparison.baseline_result else []
     baseline_report = build_run_report(
@@ -609,6 +640,7 @@ def build_comparison_report(
         run_timestamp_utc=run_timestamp if baseline_results else None,
         timings=baseline_timings,
         minimum_agents=1,
+        model_settings=model_settings,
     )
 
     def metric_payload(metrics: LocalizationMetrics | None) -> dict[str, Any]:

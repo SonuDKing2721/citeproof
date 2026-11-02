@@ -22,15 +22,25 @@ def load_curated_cases(project_dir: str | Path) -> dict[str, dict[str, Any]]:
     root = Path(project_dir)
     cases: dict[str, dict[str, Any]] = {}
     for label, slug, repo_dir in CASE_MANIFEST:
-        issue = json.loads((root / "data" / "issues" / f"{slug}.json").read_text(encoding="utf-8"))
-        gold = json.loads((root / "data" / "gold" / f"{slug}.json").read_text(encoding="utf-8"))
-        if not isinstance(issue, dict) or not isinstance(gold, dict):
-            raise ValueError(f"Curated case {slug} must have JSON object files.")
-        if issue.get("issue_id") != gold.get("issue_id"):
-            raise ValueError(f"Curated issue and gold labels do not match for {slug}.")
-        if issue.get("commit") != gold.get("pre_fix_commit"):
-            raise ValueError(f"Curated issue and gold files do not share a pre-fix pin for {slug}.")
-        if not gold.get("primary_files"):
-            raise ValueError(f"Curated case {slug} has no primary file labels.")
-        cases[label] = {"issue": issue, "gold": gold, "repo_dir": repo_dir}
+        cases[label] = load_curated_case(root, slug)
     return cases
+
+
+def load_curated_case(project_dir: str | Path, slug: str) -> dict[str, Any]:
+    """Load one case by stable slug without requiring every other case file."""
+    root = Path(project_dir)
+    case = next((item for item in CASE_MANIFEST if item[1] == slug), None)
+    if case is None:
+        raise ValueError(f"Unknown curated case: {slug}")
+    _, slug, repo_dir = case
+    issue = json.loads((root / "data" / "issues" / f"{slug}.json").read_text(encoding="utf-8"))
+    gold = json.loads((root / "data" / "gold" / f"{slug}.json").read_text(encoding="utf-8"))
+    if not isinstance(issue, dict) or not isinstance(gold, dict):
+        raise ValueError(f"Curated case {slug} must have JSON object files.")
+    if issue.get("issue_id") != gold.get("issue_id"):
+        raise ValueError(f"Curated issue and gold labels do not match for {slug}.")
+    if issue.get("commit") != gold.get("pre_fix_commit"):
+        raise ValueError(f"Curated issue and gold files do not share a pre-fix pin for {slug}.")
+    if not gold.get("primary_files"):
+        raise ValueError(f"Curated case {slug} has no primary file labels.")
+    return {"issue": issue, "gold": gold, "repo_dir": repo_dir}

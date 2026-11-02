@@ -5,6 +5,9 @@ from pathlib import Path
 
 from .models import AgentResult, Citation
 from .repo import Repo, RepoError
+from .evidence_diagnostics import diagnose_finding
+
+MIN_QUOTE_CHARACTERS = 12
 
 
 def _symbol_nodes(source: str, symbol: str) -> list[ast.AST]:
@@ -83,6 +86,10 @@ def _range_contains_quote(lines: list[str], start_line: int, end_line: int, quot
     return quote.strip() in cited
 
 
+def _quote_is_too_short(quote: str) -> bool:
+    return len(" ".join(quote.split())) < MIN_QUOTE_CHARACTERS
+
+
 def _set_outcome(citation: Citation, outcome: str, reason: str, *, valid: bool = False) -> Citation:
     citation.valid = valid
     citation.outcome = outcome
@@ -125,6 +132,12 @@ def check_citation(repo: Repo, citation: Citation) -> Citation:
             and getattr(node, "end_lineno", 0) >= citation.end_line
             for node in symbol_nodes
         ):
+            if _quote_is_too_short(citation.quote):
+                return _set_outcome(
+                    citation,
+                    "quote_too_short",
+                    f"Quote has fewer than {MIN_QUOTE_CHARACTERS} normalized characters and is too short to support a location claim.",
+                )
             return _set_outcome(
                 citation,
                 "verified_exact",
@@ -182,6 +195,13 @@ def check_citation(repo: Repo, citation: Citation) -> Citation:
             f"Quoted lines fall outside symbol '{citation.symbol}'.",
         )
 
+    if _quote_is_too_short(citation.quote):
+        return _set_outcome(
+            citation,
+            "quote_too_short",
+            f"Quote has fewer than {MIN_QUOTE_CHARACTERS} normalized characters and is too short to support a location claim.",
+        )
+
     citation.corrected_start_line, citation.corrected_end_line = corrected_range
     original = citation.claimed_start_line, citation.claimed_end_line
     return _set_outcome(
@@ -197,4 +217,5 @@ def check_citation(repo: Repo, citation: Citation) -> Citation:
 def check_result(repo: Repo, result: AgentResult) -> AgentResult:
     for finding in result.findings:
         finding.citations = [check_citation(repo, citation) for citation in finding.citations]
+        finding.evidence_diagnostics = diagnose_finding(repo, finding)
     return result

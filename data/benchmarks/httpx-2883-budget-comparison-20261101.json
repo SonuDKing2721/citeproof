@@ -320,9 +320,9 @@
     ]
   },
   "diagnosis_review": {
-    "status": "not_reviewed",
-    "reviewer": null,
-    "note": ""
+    "status": "partly_supported",
+    "reviewer": "participant",
+    "note": "Both investigators located the URL parser and described the observed slash-to-%2F behavior. The participant judged this partly supported: the HTTPX maintainer said encoding '/' is valid; merged PR #2990 identifies re-encoding already escaped %xx sequences as the defect. The agents found related behavior but missed the underlying bug. See https://github.com/encode/httpx/issues/2883 and https://github.com/encode/httpx/pull/2990."
   },
   "diagnosis_correctness_metric": "not_scored",
   "metric_note": "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness. Equal request counts do not imply equal token use or equal reasoning quality."

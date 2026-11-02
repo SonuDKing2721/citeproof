@@ -28,6 +28,10 @@ def investigate_pair(
     issue: str,
     on_progress: Callable[[str, str], None] | None = None,
     investigator: Callable[..., AgentResult] = investigate,
+    *,
+    parallel: bool = True,
+    max_completions: int = MAX_COMPLETIONS_PER_AGENT,
+    preseed: str | None = None,
 ) -> tuple[AgentResult, AgentResult]:
     """Investigate independently in parallel and return stable A/B order.
 
@@ -38,8 +42,9 @@ def investigate_pair(
     events: Queue[tuple[str, str]] = Queue()
     results: dict[str, AgentResult] = {}
     api_hints = extract_reproducer_api_hints(issue)
+    repository_hints = repo.preseed_issue(issue) if preseed is None else preseed
 
-    def run_one(strategy_spec: tuple[str, str, str]) -> AgentResult:
+    def run_one(strategy_spec: tuple[str, str, str], *, direct_progress: bool = False) -> AgentResult:
         label, strategy, first_tool = strategy_spec
         first_tool_query = (
             api_hints[0]
@@ -53,7 +58,11 @@ def investigate_pair(
             )
 
         def enqueue(message: str) -> None:
-            events.put((label, str(message)[:500]))
+            bounded = str(message)[:500]
+            if direct_progress and on_progress:
+                on_progress(label, bounded)
+            else:
+                events.put((label, bounded))
 
         try:
             return investigator(
@@ -63,8 +72,9 @@ def investigate_pair(
                 strategy,
                 first_tool=first_tool,
                 first_tool_query=first_tool_query,
+                preseed=repository_hints,
                 on_progress=enqueue,
-                max_completions=MAX_COMPLETIONS_PER_AGENT,
+                max_completions=max_completions,
             )
         except Exception as exc:
             return AgentResult(
@@ -73,6 +83,11 @@ def investigate_pair(
                 [],
                 f"Investigation worker failed ({type(exc).__name__}); this result is incomplete.",
             )
+
+    if not parallel:
+        for spec in PAIR_STRATEGIES:
+            results[spec[0]] = run_one(spec, direct_progress=True)
+        return results[PAIR_STRATEGIES[0][0]], results[PAIR_STRATEGIES[1][0]]
 
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="citeproof-investigator") as pool:
         future_to_name = {pool.submit(run_one, spec): spec[0] for spec in PAIR_STRATEGIES}

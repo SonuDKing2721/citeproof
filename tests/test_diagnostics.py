@@ -53,6 +53,36 @@ ValueError: invalid value
     def test_plain_issue_without_traceback_returns_no_hints(self):
         self.assertEqual(self._extract("The file chooser shows the wrong label."), [])
 
+    def test_extracts_deduplicated_error_phrase_and_safe_python_basenames(self):
+        from citeproof.diagnostics import extract_repository_clues
+
+        issue = '''Traceback (most recent call last):
+  File "../../.env", line 1, in secret
+  File "/repo/src/pkg/parser.py", line 42, in parse
+ValueError: stream is already closed
+ValueError: stream is already closed
+IndexError:
+'''
+
+        self.assertEqual(
+            extract_repository_clues(issue),
+            [("error", "stream is already closed"), ("filename", "parser.py")],
+        )
+
+    def test_repository_clues_skip_test_harness_traceback_files(self):
+        from citeproof.diagnostics import extract_repository_clues
+
+        issue = '''Traceback (most recent call last):
+  File "/workspace/src/pkg/testing.py", line 12, in invoke
+  File "/workspace/src/pkg/reader.py", line 30, in read
+ValueError: invalid input
+'''
+
+        self.assertEqual(
+            extract_repository_clues(issue),
+            [("error", "invalid input"), ("filename", "reader.py")],
+        )
+
     def test_zero_frame_limit_keeps_exception_without_including_traceback(self):
         from citeproof.diagnostics import extract_diagnostic_hints
 

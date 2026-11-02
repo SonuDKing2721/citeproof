@@ -324,9 +324,9 @@
     ]
   },
   "diagnosis_review": {
-    "status": "not_reviewed",
-    "reviewer": null,
-    "note": ""
+    "status": "supported",
+    "reviewer": "participant",
+    "note": "Both investigators identified the latched process-wide AppStatus.should_exit flag that causes later streams to exit; the participant judged this supported for the reported regression. PR #212 also fixes a separate watcher-lifetime defect: a watcher could retain a stopped server and affect the next server, which the investigators did not mention. See https://github.com/sysid/sse-starlette/issues/211 and https://github.com/sysid/sse-starlette/pull/212."
   },
   "diagnosis_correctness_metric": "not_scored",
   "metric_note": "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness. Equal request counts do not imply equal token use or equal reasoning quality."

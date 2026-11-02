@@ -6,5 +6,6 @@ __pycache__/
 *.py[cod]
 .streamlit/secrets.toml
 demo_repos/
+data/annotations/
 /.playwright-cli/
 /output/

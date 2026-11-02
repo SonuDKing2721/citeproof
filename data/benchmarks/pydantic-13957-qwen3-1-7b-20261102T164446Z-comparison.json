@@ -1,0 +1,207 @@
+{
+  "schema": "citeproof-budget-comparison/v2",
+  "run_timestamp_utc": "2026-11-02T16:45:57.708361+00:00",
+  "issue_id": "pydantic/pydantic#13957",
+  "repository_commit": "ca359e009fcfaff2a80df33cb99ee6ab21aaf033",
+  "model_id": "qwen3:1.7b",
+  "provider": "Ollama local",
+  "status": "incomplete",
+  "budget_matched": false,
+  "timings": {
+    "investigators_seconds": 70.625,
+    "verification_seconds": 0.0,
+    "baseline_seconds": null,
+    "total_seconds": 70.625
+  },
+  "pair": {
+    "model_requests": 8,
+    "localization": {
+      "status": "incomplete",
+      "ranked_files": [],
+      "primary_hit_at_1": null,
+      "gold_file_recall_at_3": null
+    },
+    "finding_summary": {
+      "status": "incomplete",
+      "finding_count": 1,
+      "agents_with_findings": 1,
+      "verified_citation_count": 0,
+      "required_agents": 2
+    },
+    "cross_check": "incomplete",
+    "states": {
+      "investigation": "incomplete",
+      "citation_validation": "none_verified",
+      "cross_check": "incomplete",
+      "verification": "not_requested",
+      "localization": "incomplete",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "live_pair"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "qwen3:1.7b",
+        "request_parameters": {
+          "max_tokens": 2048,
+          "temperature": 0.2,
+          "top_p": 0.9
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "qwen3:1.7b",
+        "request_parameters": {},
+        "timeout_seconds": null,
+        "status": "not_run; local model sweep omits the extra verifier call"
+      }
+    },
+    "verification": {
+      "status": "not_run",
+      "assessment": "not_run",
+      "model_requests": 0,
+      "selected_finding_id": null,
+      "supporting_evidence_ids": [],
+      "challenging_evidence_ids": [],
+      "rationale": "",
+      "test_scenario": null,
+      "test_assertion": null,
+      "error": null
+    },
+    "agents": [
+      {
+        "name": "Investigator A · symptom-first",
+        "error": "The local model returned without successfully reading repository source; this result is incomplete.",
+        "model_requests": 4,
+        "model_retries": 0,
+        "trace_events": [
+          {
+            "tool": "search_text",
+            "request_summary": "query: ForwardRef.__init__",
+            "result_summary": "Found 0 matching source lines; contents withheld."
+          },
+          {
+            "tool": "read_file",
+            "request_summary": "pydantic/pydantic.py:1-100",
+            "result_summary": "Tool result withheld after an error."
+          }
+        ],
+        "findings": []
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "error": null,
+        "model_requests": 4,
+        "model_retries": 0,
+        "trace_events": [
+          {
+            "tool": "find_symbols",
+            "request_summary": "symbol: ForwardRef",
+            "result_summary": "Found 17 matching symbols; source text withheld."
+          },
+          {
+            "tool": "read_file",
+            "request_summary": "pydantic/v1/typing.py:60-70",
+            "result_summary": "Read 11 source lines; source text withheld."
+          }
+        ],
+        "findings": [
+          {
+            "claim": "TypeError: ForwardRef.__init__() got an unexpected keyword argument 'is_class'",
+            "explanation": "The error occurs because the ForwardRef class's __init__ method is missing the 'is_class' keyword argument, which is being incorrectly passed in the reproducer. The code attempts to use 'is_class' but the implementation does not support it, leading to the TypeError.",
+            "citation_summary": "none_verified",
+            "evidence_diagnostics": {
+              "identifier_checks": [],
+              "unverified_quote_leaks": []
+            },
+            "citations": [
+              {
+                "path": "pydantic/v1/typing.py",
+                "symbol": "",
+                "start_line": 60,
+                "end_line": 70,
+                "claimed_start_line": 60,
+                "claimed_end_line": 70,
+                "corrected_start_line": null,
+                "corrected_end_line": null,
+                "quote": "def evaluate_forwardref(type_: ForwardRef, globalns: Any, localns: Any) -> Any:\n    return type_._evaluate(globalns, localns, recursive_guard=set())",
+                "valid": false,
+                "reason": "Quoted text does not occur in this file.",
+                "outcome": "quote_not_found"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "investigator_localization": [
+      {
+        "name": "Investigator A · symptom-first",
+        "status": "incomplete",
+        "ranked_files": [],
+        "primary_hit_at_1": null,
+        "primary_file_reciprocal_rank": null,
+        "gold_file_recall_at_3": null
+      },
+      {
+        "name": "Investigator B · structure-first",
+        "status": "complete",
+        "ranked_files": [],
+        "primary_hit_at_1": false,
+        "primary_file_reciprocal_rank": 0,
+        "gold_file_recall_at_3": 0.0
+      }
+    ]
+  },
+  "baseline": {
+    "model_requests": 0,
+    "localization": {
+      "status": "not_run",
+      "ranked_files": [],
+      "primary_hit_at_1": null,
+      "gold_file_recall_at_3": null
+    },
+    "finding_summary": {
+      "status": "incomplete",
+      "finding_count": 0,
+      "agents_with_findings": 0,
+      "verified_citation_count": 0,
+      "required_agents": 1
+    },
+    "cross_check": "not_applicable",
+    "states": {
+      "investigation": "incomplete",
+      "citation_validation": "no_citations",
+      "cross_check": "not_applicable",
+      "verification": "not_requested",
+      "localization": "incomplete",
+      "diagnosis_review": "not_reviewed",
+      "workflow_kind": "single_agent_baseline"
+    },
+    "model_settings": {
+      "investigator": {
+        "model_id": "qwen3:1.7b",
+        "request_parameters": {
+          "max_tokens": 2048,
+          "temperature": 0.2,
+          "top_p": 0.9
+        },
+        "timeout_seconds": 120.0
+      },
+      "verifier": {
+        "model_id": "qwen3:1.7b",
+        "request_parameters": {},
+        "timeout_seconds": null,
+        "status": "not_run; local model sweep omits the extra verifier call"
+      }
+    },
+    "agents": [],
+    "investigator_localization": []
+  },
+  "diagnosis_review": {
+    "status": "not_reviewed",
+    "reviewer": null,
+    "note": ""
+  },
+  "diagnosis_correctness_metric": "not_scored",
+  "metric_note": "File-localization proxy metrics use human-curated file labels from the merged fix. Per-investigator ranking follows finding order. These metrics do not score diagnosis correctness. Equal request counts do not imply equal token use or equal reasoning quality."
+}
