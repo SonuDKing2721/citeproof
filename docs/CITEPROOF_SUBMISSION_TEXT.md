@@ -19,7 +19,7 @@ Citeproof helps Python maintainers investigate bug reports with source evidence 
 
 ## Model and implementation
 
-Citeproof uses Meta Muse Glimmer 30B (open-weight) through NVIDIA API Catalog's free inference endpoint. It does not call Meta Model API and does not use a paid fallback. The captioned demo is assembled from screenshots of the current UI; it shows an earlier saved Click #3449 run, rechecks citations locally, and makes no model request for playback.
+Citeproof uses Meta Muse Glimmer 30B (open-weight) through NVIDIA API Catalog's free inference endpoint. It does not call Meta Model API and does not use a paid fallback. The captioned demo is an interactive screen recording of the current UI; it shows an earlier saved Click #3449 run, rechecks citations locally, and makes no model request for playback.
 
 ## What is new in the project
 

@@ -2,7 +2,7 @@
 
 **Citeproof helps Python maintainers investigate bug reports with source evidence they can check against a pinned repository.**
 
-Watch the [three-minute, captioned app walkthrough](assets/demo/citeproof-hackathon-demo.mp4), assembled from screenshots of the current UI. It shows cached investigator answers from October 27, 2026; citations are rechecked locally, and no model call is made for playback. The MP4 is silent, with [timed captions](assets/demo/citeproof-hackathon-demo.srt) and a [voiceover script](docs/CITEPROOF_DEMO_VOICEOVER.md).
+Watch the [three-minute, captioned app walkthrough](assets/demo/citeproof-hackathon-demo.mp4), recorded from the interactive current UI with the mouse pointer hidden. It shows cached investigator answers from October 27, 2026; citations are rechecked locally, and no model call is made for playback. The MP4 is silent, with [timed captions](assets/demo/citeproof-hackathon-demo.srt) and a [voiceover script](docs/CITEPROOF_DEMO_VOICEOVER.md).
 
 For the plain-language project overview and end-to-end workflow, see the [Citeproof Project Guide](docs/CITEPROOF_PROJECT_GUIDE.md). For copy-ready portal fields, see [Citeproof Submission Text](docs/CITEPROOF_SUBMISSION_TEXT.md); for the demo run-of-show and checklist, see [Citeproof Submission Prep](docs/CITEPROOF_SUBMISSION_PLAN.md). For pinned issue, fix, and contamination notes for all eight examples, see the [curated-case review](docs/CITEPROOF_CASE_REVIEW.md).
 

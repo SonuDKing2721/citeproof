@@ -1,35 +1,35 @@
 1
 00:00:00,000 --> 00:00:20,000
-Trace issues to checked source
+Citeproof · evidence-first Python issue triage
 
 2
-00:00:20,000 --> 00:00:40,000
+00:00:20,000 --> 00:00:45,000
 Click #3449 · cached run · no model call
 
 3
-00:00:40,000 --> 00:01:05,000
+00:00:45,000 --> 00:01:10,000
 Findings · 3 results · 4 citations verified
 
 4
-00:01:05,000 --> 00:01:35,000
-File, lines, quote, symbol checked
+00:01:10,000 --> 00:01:32,000
+File, lines, quote, and symbol checked
 
 5
-00:01:35,000 --> 00:01:47,000
+00:01:32,000 --> 00:01:55,000
 Compare · overlapping source lines
 
 6
-00:01:47,000 --> 00:02:00,000
+00:01:55,000 --> 00:02:10,000
 Localization · hit@1 miss · recall@3 0.2
 
 7
-00:02:00,000 --> 00:02:25,000
+00:02:10,000 --> 00:02:25,000
 Report · human review: partly supported
 
 8
-00:02:25,000 --> 00:02:45,000
+00:02:25,000 --> 00:02:42,000
 Trace · old events unavailable · no call
 
 9
-00:02:45,000 --> 00:03:00,000
+00:02:42,000 --> 00:03:00,000
 One case; no accuracy claim
