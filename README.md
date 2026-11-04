@@ -1,14 +1,16 @@
 # Citeproof
 
-For the plain-language project overview and end-to-end workflow, see the [Citeproof Project Guide](docs/CITEPROOF_PROJECT_GUIDE.md).
-For the hackathon's three-minute demo run-of-show and submission checklist, see [Citeproof Submission Prep](docs/CITEPROOF_SUBMISSION_PLAN.md).
-For pinned issue, fix, and contamination notes for all eight examples, see the [curated-case review](docs/CITEPROOF_CASE_REVIEW.md).
+**Citeproof helps Python maintainers investigate bug reports with source evidence they can check against a pinned repository.**
+
+Watch the [three-minute, captioned app walkthrough](assets/demo/citeproof-hackathon-demo.mp4), assembled from screenshots of the current UI. It shows cached investigator answers from October 27, 2026; citations are rechecked locally, and no model call is made for playback. The MP4 is silent, with [timed captions](assets/demo/citeproof-hackathon-demo.srt) and a [voiceover script](docs/CITEPROOF_DEMO_VOICEOVER.md).
+
+For the plain-language project overview and end-to-end workflow, see the [Citeproof Project Guide](docs/CITEPROOF_PROJECT_GUIDE.md). For copy-ready portal fields, see [Citeproof Submission Text](docs/CITEPROOF_SUBMISSION_TEXT.md); for the demo run-of-show and checklist, see [Citeproof Submission Prep](docs/CITEPROOF_SUBMISSION_PLAN.md). For pinned issue, fix, and contamination notes for all eight examples, see the [curated-case review](docs/CITEPROOF_CASE_REVIEW.md).
 
 ## License
 
 Citeproof's project code is licensed under the [MIT License](LICENSE). Third-party dependencies, public issue material, benchmark labels, and any separately supplied assets retain their own licenses and applicable terms.
 
-Citeproof is a local-first prototype for investigating Python bug reports with source evidence. Two independent Muse Glimmer investigations run concurrently with bounded, read-only repository tools. A deterministic checker validates each citation's file, line range, quote, symbol, and whether the cited lines fall within that symbol. When both investigators return checked citations, one additional Muse call skeptically reviews their candidate findings and may suggest a regression-test scenario. It can select only existing finding/evidence IDs, has no repository tools, and cannot add a citation. Evidence overlap and model review do not prove that a diagnosis is correct.
+Two independent Muse Glimmer investigations run concurrently with bounded, read-only repository tools. A deterministic checker validates each citation's file, line range, quote, symbol, and whether the cited lines fall within that symbol. When both investigators return checked citations, one additional Muse call skeptically reviews their candidate findings and may suggest a regression-test scenario. It can select only existing finding/evidence IDs, has no repository tools, and cannot add a citation. Evidence overlap and model review do not prove that a diagnosis is correct.
 
 ## Hackathon contribution
 
@@ -36,20 +38,20 @@ The current app has no paid Meta Model API fallback.
 
 ## Run locally
 
+Use Python 3.12 for the dependency set. The cached demo works without an API key; for live investigations, set `NVIDIA_API_KEY` in `.env` first.
+
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-# Edit .env and set NVIDIA_API_KEY. Set CITEPROOF_REPO to a local Python repository folder if desired.
 streamlit run app.py
 ```
 
-In the app, select a local Python repository folder, paste an issue title and description, and click **Investigate with both agents**. Any test scenario is labeled **not run**; Citeproof does not execute repository code or generated tests.
+To play the saved example, select Click #3449 and click **Load Cached Click #3449 Demo · No Model Call**. To investigate a new issue, set `NVIDIA_API_KEY` in `.env`, select a local Python repository folder, paste an issue title and description, and click **Investigate with both agents**. Any test scenario is labeled **not run**; Citeproof does not execute repository code or generated tests.
 
 Curated cases can show file-localization proxies from maintainer-confirmed fix labels. Manual issues have no curated labels, so their JSON export explicitly marks localization as unscored while still recording checked evidence and run provenance.
 
-For a no-call presentation path on Click #3449, use **Load cached A/B + live verifier demo · no model call**. The interface labels the investigator pair as cached, rechecks its citations against the pinned checkout, and identifies the verifier review as a separate live call.
+For the no-call Click #3449 path used in the video, use **Load Cached Click #3449 Demo · No Model Call**. The interface labels the investigator pair as cached and rechecks citations against the pinned checkout. The separate **Load Cached A/B + Live Verifier Demo · No Model Call** option does make a live verifier call; do not describe that option as entirely no-call.
 
 The primary **Load Cached Click #3449 Demo · No Model Call** button loads a v3 report built from the original cached run, rechecks its citations against the pinned checkout, and preserves the participant's **partly supported** diagnosis review. The current v3 report ranks `src/click/termui.py` first (`hit@1=false`, recall@3 `0.2`) and shows each investigator's file-localization metrics. The original v1 snapshot and the earlier unreviewed and reviewed v2 exports remain unchanged. The v3 demo report is [`click-3449-cached-demo-rechecked-v3-human-review-20261101.json`](data/benchmarks/click-3449-cached-demo-rechecked-v3-human-review-20261101.json); it keeps the cached run's original timestamp. New runs default to v4 reports with bounded, sanitized tool-event summaries; this saved demo keeps its original v3 schema. These reviews annotate one issue and are not independent cases.
 

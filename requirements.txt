@@ -2,3 +2,5 @@ streamlit>=1.60,<2
 streamlit-shadcn-ui==1.4.0
 openai>=1.66,<3
 python-dotenv>=1,<2
+pytest>=8,<9
+PyYAML>=6,<7
